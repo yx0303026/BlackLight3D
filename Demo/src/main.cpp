@@ -1,4 +1,4 @@
-#include "rmlui/UIXmlParser.h"
+#include "rmlui/HtmlCssParser.h"
 #include "engine/IGraphicsBackend.h"
 #include "engine/backends/WindowsOpenGLBackend.h"
 #include "rmlui/RmlUiTree.h"
@@ -32,8 +32,8 @@ void WaitForAnyKey() {
 
 } // namespace
 
-/// Loads XML content from a file.
-std::string LoadXmlFile(const char* filepath) {
+/// Loads HTML content from a file.
+std::string LoadHtmlFile(const char* filepath) {
 	std::ifstream file(filepath);
 	if (!file.is_open()) {
 		std::cerr << "Error: Could not open file: " << filepath << std::endl;
@@ -74,26 +74,27 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
-	// Load and parse XML
-	std::string xml_file = "UI\\Main.xml";
+	// Load and parse HTML
+	std::string html_file = "UI\\Main.html";
 	if (argc > 1) {
-		xml_file = argv[1];
+		html_file = argv[1];
 	}
 
-	std::cout << "Loading UI from: " << xml_file << std::endl;
-	std::string xml_content = LoadXmlFile(xml_file.c_str());
-	if (xml_content.empty()) {
+	std::cout << "Loading UI from: " << html_file << std::endl;
+	std::string html_content = LoadHtmlFile(html_file.c_str());
+	if (html_content.empty()) {
 		backend->Shutdown();
 		WaitForAnyKey();
 		return 1;
 	}
 
-	// Parse UI
+	// Parse UI with HTML+CSS Parser
 	std::unique_ptr<UIScreen> screen;
-	UIParseError parse_error;
+	HTMLParseError parse_error;
 
-	if (!UIXmlParser::Parse(xml_content, screen, parse_error)) {
-		std::cerr << "Parse Error at line " << parse_error.line << ": " << parse_error.message << std::endl;
+	if (!HtmlCssParser::Parse(html_content, "", screen, parse_error)) {
+		std::cerr << "Parse Error at line " << parse_error.line 
+			<< " column " << parse_error.column << ": " << parse_error.message << std::endl;
 		backend->Shutdown();
 		WaitForAnyKey();
 		return 1;

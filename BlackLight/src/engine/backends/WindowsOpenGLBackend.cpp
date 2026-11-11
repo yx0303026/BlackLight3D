@@ -71,37 +71,40 @@ namespace BlackLight::Engine::Windows
 			{
 				const Rml::CompiledGeometryHandle handle = next_geometry_handle_++;
 				geometry_.emplace(handle, Geometry{
-					std::vector<Rml::Vertex>(vertices.begin(), vertices.end()),
-					std::vector<int>(indices.begin(), indices.end())});
+											  std::vector<Rml::Vertex>(vertices.begin(), vertices.end()),
+											  std::vector<int>(indices.begin(), indices.end())});
 				return handle;
 			}
 
 			/// Draws one indexed mesh with premultiplied-alpha blending.
 			void RenderGeometry(Rml::CompiledGeometryHandle handle,
-				Rml::Vector2f translation, Rml::TextureHandle texture) override
+								Rml::Vector2f translation, Rml::TextureHandle texture) override
 			{
 				const auto found = geometry_.find(handle);
 				if (found == geometry_.end() || found->second.indices.empty())
 					return;
 
-				const Geometry& geometry = found->second;
+				const Geometry &geometry = found->second;
 				glPushMatrix();
 				glTranslatef(translation.x, translation.y, 0.f);
 				glEnableClientState(GL_VERTEX_ARRAY);
 				glEnableClientState(GL_COLOR_ARRAY);
 				glVertexPointer(2, GL_FLOAT, sizeof(Rml::Vertex), &geometry.vertices[0].position);
 				glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(Rml::Vertex), &geometry.vertices[0].colour);
-				if (texture != 0) {
+				if (texture != 0)
+				{
 					glEnable(GL_TEXTURE_2D);
 					glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 					glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(texture));
 					glTexCoordPointer(2, GL_FLOAT, sizeof(Rml::Vertex), &geometry.vertices[0].tex_coord);
-				} else {
+				}
+				else
+				{
 					glDisable(GL_TEXTURE_2D);
 					glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 				}
 				glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(geometry.indices.size()),
-					GL_UNSIGNED_INT, geometry.indices.data());
+							   GL_UNSIGNED_INT, geometry.indices.data());
 				glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 				glPopMatrix();
 			}
@@ -113,8 +116,8 @@ namespace BlackLight::Engine::Windows
 			}
 
 			/// Image-file decoding is not part of this minimal backend.
-			Rml::TextureHandle LoadTexture(Rml::Vector2i& texture_dimensions,
-				const Rml::String& /*source*/) override
+			Rml::TextureHandle LoadTexture(Rml::Vector2i &texture_dimensions,
+										   const Rml::String & /*source*/) override
 			{
 				texture_dimensions = Rml::Vector2i(0, 0);
 				return 0;
@@ -122,7 +125,7 @@ namespace BlackLight::Engine::Windows
 
 			/// Uploads RmlUi-generated RGBA textures, including FreeType glyph atlases.
 			Rml::TextureHandle GenerateTexture(Rml::Span<const Rml::byte> source,
-				Rml::Vector2i source_dimensions) override
+											   Rml::Vector2i source_dimensions) override
 			{
 				if (source.empty() || source_dimensions.x <= 0 || source_dimensions.y <= 0)
 					return 0;
@@ -133,7 +136,7 @@ namespace BlackLight::Engine::Windows
 					return 0;
 				glBindTexture(GL_TEXTURE_2D, texture);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, source_dimensions.x, source_dimensions.y,
-					0, GL_RGBA, GL_UNSIGNED_BYTE, source.data());
+							 0, GL_RGBA, GL_UNSIGNED_BYTE, source.data());
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
@@ -158,7 +161,7 @@ namespace BlackLight::Engine::Windows
 			void SetScissorRegion(Rml::Rectanglei region) override
 			{
 				glScissor(region.Left(), static_cast<GLint>(viewport_height_) - region.Bottom(),
-					region.Width(), region.Height());
+						  region.Width(), region.Height());
 			}
 
 			/// Updates the viewport used to convert RmlUi coordinates to OpenGL coordinates.
@@ -177,7 +180,8 @@ namespace BlackLight::Engine::Windows
 
 		private:
 			/// Holds one immutable mesh referenced by an RmlUi geometry handle.
-			struct Geometry {
+			struct Geometry
+			{
 				std::vector<Rml::Vertex> vertices;
 				std::vector<int> indices;
 			};
@@ -189,93 +193,94 @@ namespace BlackLight::Engine::Windows
 
 	} // namespace
 
-		// Window procedure for Windows API
-		LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+	// Window procedure for Windows API
+	LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+	{
+		if (msg == WM_CREATE)
 		{
-			if (msg == WM_CREATE)
-			{
-				CREATESTRUCT *pCreate = reinterpret_cast<CREATESTRUCT *>(lparam);
-				SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)pCreate->lpCreateParams);
-				return 0;
-			}
-
-			WindowsOpenGLBackend *pThis = nullptr;
-			if (msg != WM_CREATE)
-			{
-				pThis = reinterpret_cast<WindowsOpenGLBackend *>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-			}
-
-			switch (msg)
-			{
-			case WM_CLOSE:
-			case WM_DESTROY:
-				PostQuitMessage(0);
-				return 0;
-			case WM_KEYDOWN:
-			case WM_SYSKEYDOWN:
-				if (pThis && pThis->input_sink_)
-					pThis->input_sink_->SetKeyDown(static_cast<std::uint32_t>(wparam), true);
-				return 0;
-			case WM_KEYUP:
-			case WM_SYSKEYUP:
-				if (pThis && pThis->input_sink_)
-					pThis->input_sink_->SetKeyDown(static_cast<std::uint32_t>(wparam), false);
-				return 0;
-			case WM_LBUTTONDOWN:
-				if (pThis && pThis->input_sink_)
-					pThis->input_sink_->SetMouseButtonDown(MouseButton::Left, true);
-				return 0;
-			case WM_LBUTTONUP:
-				if (pThis && pThis->input_sink_)
-					pThis->input_sink_->SetMouseButtonDown(MouseButton::Left, false);
-				return 0;
-			case WM_RBUTTONDOWN:
-				if (pThis && pThis->input_sink_)
-					pThis->input_sink_->SetMouseButtonDown(MouseButton::Right, true);
-				return 0;
-			case WM_RBUTTONUP:
-				if (pThis && pThis->input_sink_)
-					pThis->input_sink_->SetMouseButtonDown(MouseButton::Right, false);
-				return 0;
-			case WM_MBUTTONDOWN:
-				if (pThis && pThis->input_sink_)
-					pThis->input_sink_->SetMouseButtonDown(MouseButton::Middle, true);
-				return 0;
-			case WM_MBUTTONUP:
-				if (pThis && pThis->input_sink_)
-					pThis->input_sink_->SetMouseButtonDown(MouseButton::Middle, false);
-				return 0;
-			case WM_MOUSEMOVE:
-				if (pThis && pThis->input_sink_)
-					pThis->input_sink_->SetMousePosition({
-						static_cast<float>(GET_X_LPARAM(lparam)),
-						static_cast<float>(GET_Y_LPARAM(lparam))});
-				return 0;
-			case WM_MOUSEWHEEL:
-				if (pThis && pThis->input_sink_)
-					pThis->input_sink_->AddMouseWheelDelta(
-						static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / WHEEL_DELTA);
-				return 0;
-			case WM_SIZE:
-				if (pThis) {
-					pThis->drawable_width_ = LOWORD(lparam);
-					pThis->drawable_height_ = HIWORD(lparam);
-					if (pThis->drawable_width_ > 0 && pThis->drawable_height_ > 0 &&
-						pThis->opengl_context_) {
-						glViewport(0, 0,
-							static_cast<GLint>(pThis->drawable_width_),
-							static_cast<GLint>(pThis->drawable_height_));
-						if (pThis->rmlui_context_)
-							pThis->rmlui_context_->SetDimensions(Rml::Vector2i(
-								static_cast<int>(pThis->drawable_width_),
-								static_cast<int>(pThis->drawable_height_)));
-					}
-				}
-				return 0;
-			}
-
-			return DefWindowProc(hwnd, msg, wparam, lparam);
+			CREATESTRUCT *pCreate = reinterpret_cast<CREATESTRUCT *>(lparam);
+			SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)pCreate->lpCreateParams);
+			return 0;
 		}
+
+		WindowsOpenGLBackend *pThis = nullptr;
+		if (msg != WM_CREATE)
+		{
+			pThis = reinterpret_cast<WindowsOpenGLBackend *>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+		}
+
+		switch (msg)
+		{
+		case WM_CLOSE:
+		case WM_DESTROY:
+			PostQuitMessage(0);
+			return 0;
+		case WM_KEYDOWN:
+		case WM_SYSKEYDOWN:
+			if (pThis && pThis->input_sink_)
+				pThis->input_sink_->SetKeyDown(static_cast<std::uint32_t>(wparam), true);
+			return 0;
+		case WM_KEYUP:
+		case WM_SYSKEYUP:
+			if (pThis && pThis->input_sink_)
+				pThis->input_sink_->SetKeyDown(static_cast<std::uint32_t>(wparam), false);
+			return 0;
+		case WM_LBUTTONDOWN:
+			if (pThis && pThis->input_sink_)
+				pThis->input_sink_->SetMouseButtonDown(MouseButton::Left, true);
+			return 0;
+		case WM_LBUTTONUP:
+			if (pThis && pThis->input_sink_)
+				pThis->input_sink_->SetMouseButtonDown(MouseButton::Left, false);
+			return 0;
+		case WM_RBUTTONDOWN:
+			if (pThis && pThis->input_sink_)
+				pThis->input_sink_->SetMouseButtonDown(MouseButton::Right, true);
+			return 0;
+		case WM_RBUTTONUP:
+			if (pThis && pThis->input_sink_)
+				pThis->input_sink_->SetMouseButtonDown(MouseButton::Right, false);
+			return 0;
+		case WM_MBUTTONDOWN:
+			if (pThis && pThis->input_sink_)
+				pThis->input_sink_->SetMouseButtonDown(MouseButton::Middle, true);
+			return 0;
+		case WM_MBUTTONUP:
+			if (pThis && pThis->input_sink_)
+				pThis->input_sink_->SetMouseButtonDown(MouseButton::Middle, false);
+			return 0;
+		case WM_MOUSEMOVE:
+			if (pThis && pThis->input_sink_)
+				pThis->input_sink_->SetMousePosition({static_cast<float>(GET_X_LPARAM(lparam)),
+													  static_cast<float>(GET_Y_LPARAM(lparam))});
+			return 0;
+		case WM_MOUSEWHEEL:
+			if (pThis && pThis->input_sink_)
+				pThis->input_sink_->AddMouseWheelDelta(
+					static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / WHEEL_DELTA);
+			return 0;
+		case WM_SIZE:
+			if (pThis)
+			{
+				pThis->drawable_width_ = LOWORD(lparam);
+				pThis->drawable_height_ = HIWORD(lparam);
+				if (pThis->drawable_width_ > 0 && pThis->drawable_height_ > 0 &&
+					pThis->opengl_context_)
+				{
+					glViewport(0, 0,
+							   static_cast<GLint>(pThis->drawable_width_),
+							   static_cast<GLint>(pThis->drawable_height_));
+					if (pThis->rmlui_context_)
+						pThis->rmlui_context_->SetDimensions(Rml::Vector2i(
+							static_cast<int>(pThis->drawable_width_),
+							static_cast<int>(pThis->drawable_height_)));
+				}
+			}
+			return 0;
+		}
+
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	}
 
 	WindowsOpenGLBackend::WindowsOpenGLBackend() = default;
 
@@ -332,7 +337,8 @@ namespace BlackLight::Engine::Windows
 
 		rmlui_render_interface_ = std::make_unique<SimpleRenderInterface>();
 		Rml::SetRenderInterface(rmlui_render_interface_.get());
-		if (!Rml::Initialise()) {
+		if (!Rml::Initialise())
+		{
 			std::cerr << "Failed to initialize RmlUi" << std::endl;
 			return GraphicsResult::ContextCreationFailed;
 		}
@@ -340,14 +346,16 @@ namespace BlackLight::Engine::Windows
 		char windows_directory[MAX_PATH]{};
 		const UINT windows_directory_length = GetWindowsDirectoryA(
 			windows_directory, static_cast<UINT>(sizeof(windows_directory)));
-		if (windows_directory_length == 0 || windows_directory_length >= sizeof(windows_directory)) {
+		if (windows_directory_length == 0 || windows_directory_length >= sizeof(windows_directory))
+		{
 			std::cerr << "Failed to locate the Windows system directory" << std::endl;
 			Shutdown();
 			return GraphicsResult::ContextCreationFailed;
 		}
 		const std::string default_font_path = std::string(windows_directory, windows_directory_length) +
-			"\\Fonts\\arial.ttf";
-		if (!Rml::LoadFontFace(default_font_path)) {
+											  "\\Fonts\\arial.ttf";
+		if (!Rml::LoadFontFace(default_font_path))
+		{
 			std::cerr << "Failed to load the default RmlUi font" << std::endl;
 			Shutdown();
 			return GraphicsResult::ContextCreationFailed;
@@ -436,8 +444,7 @@ namespace BlackLight::Engine::Windows
 
 		if (rmlui_context_)
 		{
-			static_cast<SimpleRenderInterface*>(rmlui_render_interface_.get())->SetViewport(
-				drawable_width_, drawable_height_);
+			static_cast<SimpleRenderInterface *>(rmlui_render_interface_.get())->SetViewport(drawable_width_, drawable_height_);
 			rmlui_context_->Render();
 		}
 
@@ -463,7 +470,8 @@ namespace BlackLight::Engine::Windows
 	{
 		rmlui_context_.reset();
 		rmlui_renderer_.reset();
-		if (rmlui_initialized_) {
+		if (rmlui_initialized_)
+		{
 			Rml::ReleaseRenderManagers();
 			Rml::Shutdown();
 			rmlui_initialized_ = false;

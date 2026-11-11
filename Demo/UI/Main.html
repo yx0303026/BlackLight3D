@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlackLight3D Engine Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+        }
+
+        .main-screen {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background-color: #263746;
+            color: #ecf0f1;
+            border: 1px solid #526b7d;
+            padding: 12px;
+        }
+
+        .title-panel {
+            width: 320px;
+            background-color: #263746;
+            border: 1px solid #526b7d;
+            padding: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .title-text {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2ecc71;
+        }
+
+        .start-button {
+            background-color: #217a72;
+            color: white;
+            padding: 8px 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .start-button:hover {
+            background-color: #16544d;
+            box-shadow: 0 0 10px rgba(33, 122, 114, 0.5);
+        }
+
+        .content-panel {
+            width: 100%;
+            height: 200px;
+            display: flex;
+            gap: 20px;
+            flex: 1;
+        }
+
+        .panel-half {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #34495e;
+            border: 1px solid #526b7d;
+            padding: 15px;
+            border-radius: 4px;
+        }
+
+        .panel-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #3498db;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 5px;
+        }
+
+        .list-box {
+            flex: 1;
+            background-color: #2c3e50;
+            border: 1px solid #526b7d;
+            border-radius: 3px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+
+        .list-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #526b7d;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .list-item:hover {
+            background-color: #34495e;
+            padding-left: 16px;
+            color: #2ecc71;
+        }
+
+        .list-item:last-child {
+            border-bottom: none;
+        }
+
+        .grid-container {
+            flex: 1;
+            background-color: #2c3e50;
+            border: 1px solid #526b7d;
+            border-radius: 3px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            margin-top: 10px;
+        }
+
+        .grid-header {
+            background-color: #34495e;
+            padding: 8px 12px;
+            border-bottom: 2px solid #526b7d;
+            font-weight: 600;
+            color: #3498db;
+            display: flex;
+            gap: 40px;
+        }
+
+        .grid-row {
+            padding: 8px 12px;
+            border-bottom: 1px solid #526b7d;
+            display: flex;
+            gap: 40px;
+            transition: all 0.2s ease;
+        }
+
+        .grid-row:hover {
+            background-color: #34495e;
+            padding-left: 16px;
+        }
+
+        .grid-row:last-child {
+            border-bottom: none;
+        }
+
+        .status-bar {
+            width: 100%;
+            height: auto;
+            background-color: #2c3e50;
+            border-top: 1px solid #526b7d;
+            padding: 12px;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #95a5a6;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .status-item {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+
+        .status-label {
+            font-weight: 600;
+            color: #ecf0f1;
+        }
+
+        .status-value {
+            color: #2ecc71;
+        }
+
+        /* Scrollbar styling */
+        .list-box::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .list-box::-webkit-scrollbar-track {
+            background: #2c3e50;
+            border-radius: 2px;
+        }
+
+        .list-box::-webkit-scrollbar-thumb {
+            background: #526b7d;
+            border-radius: 2px;
+        }
+
+        .list-box::-webkit-scrollbar-thumb:hover {
+            background: #7f8c8d;
+        }
+
+        /* Animation */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .main-screen {
+            animation: fadeIn 0.5s ease-in;
+        }
+    </style>
+</head>
+<body>
+    <div id="main_screen" class="main-screen">
+        <!-- Title Panel -->
+        <div id="title_panel" class="title-panel">
+            <div class="title-text">Welcome to BlackLight3D</div>
+            <button id="start_button" class="start-button">Start</button>
+        </div>
+
+        <!-- Content Panel -->
+        <div id="content_panel" class="content-panel">
+            <!-- Left Panel -->
+            <div id="left_panel" class="panel-half">
+                <div class="panel-title">Assets Library</div>
+                <div id="assets_list" class="list-box">
+                    <div class="list-item">📁 Textures</div>
+                    <div class="list-item">📁 Models</div>
+                    <div class="list-item">📁 Shaders</div>
+                    <div class="list-item">📁 Animations</div>
+                    <div class="list-item">📁 Audio</div>
+                    <div class="list-item">📁 UI Resources</div>
+                </div>
+            </div>
+
+            <!-- Right Panel -->
+            <div id="right_panel" class="panel-half">
+                <div class="panel-title">Asset Details</div>
+                <div id="asset_grid" class="grid-container">
+                    <div class="grid-header">
+                        <span>Name</span>
+                        <span>Type</span>
+                    </div>
+                    <div class="grid-row">
+                        <span>terrain_01</span>
+                        <span>Model</span>
+                    </div>
+                    <div class="grid-row">
+                        <span>diffuse_map</span>
+                        <span>Texture</span>
+                    </div>
+                    <div class="grid-row">
+                        <span>character_rig</span>
+                        <span>Skeleton</span>
+                    </div>
+                    <div class="grid-row">
+                        <span>ambient_music</span>
+                        <span>Audio</span>
+                    </div>
+                </div>
+                <div id="content_fill" style="height: 12px;"></div>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div id="status_bar" class="status-bar">
+            <div class="status-item">
+                <span class="status-label">Engine:</span>
+                <span class="status-value">BlackLight3D v1.0</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Resolution:</span>
+                <span class="status-value">1280×720</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Renderer:</span>
+                <span class="status-value">OpenGL</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Status:</span>
+                <span class="status-value">Ready</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

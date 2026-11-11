@@ -60,8 +60,9 @@ endif()
 
 set(BLACKLIGHT_ENGINE_SOURCES
 	src/rmlui/RmlUiTree.cpp
-	src/rmlui/UIElement.cpp
-	src/rmlui/UIXmlParser.cpp
+	src/rmlui/HTMLElement.cpp
+	src/rmlui/HTMLParser.cpp
+	src/rmlui/HtmlCssParser.cpp
 	src/engine/Content.cpp
 	src/engine/Ecs.cpp
 	src/engine/Game.cpp
@@ -125,7 +126,7 @@ else()
 endif()
 
 if(BLACKLIGHT_BUILD_TESTS)
-	add_executable(blacklight_rmlui_tests tests/UIXmlParserTests.cpp)
+	add_executable(blacklight_rmlui_tests tests/HTMLParserTests.cpp)
 	target_link_libraries(blacklight_rmlui_tests PRIVATE BlackLight::EngineStatic)
 	add_test(NAME blacklight_rmlui_tests COMMAND blacklight_rmlui_tests)
 

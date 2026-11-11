@@ -35,18 +35,26 @@ To require locally installed packages, configure with `-DBLACKLIGHT_FETCH_DEPEND
 
 ## XML
 
-`Screen` is the required root. Nested `Panel` elements are containers, and non-whitespace text between elements becomes a text node. `c:id` is preferred; plain `id` is also accepted, but the two cannot be used on the same element. IDs are optional, unique within a screen, and cannot contain whitespace. The parser accepts the literal `c:id` attribute even when no `xmlns:c` declaration is present; the sample includes a declaration to remain well-formed XML.
+`Screen` is the required UI root. It may be wrapped by `<layout>` to declare named inline stylesheets. Controls include `Panel`, `Fill`, `Border`, `Button`, `ListBox`, `ListView`, and `DataGrid`; non-whitespace text between container elements becomes a text node. `c:id` is preferred; plain `id` is also accepted, but the two cannot be used on the same element. IDs are optional, unique within a screen, and cannot contain whitespace. A control's `style` attribute references a stylesheet by ID (`style="xx"`) and optionally a CSS class (`style="xx:panel-class"`).
 
 ```xml
-<Screen xmlns:c="urn:blacklight:ui" c:id="screen_id">
-  <Panel c:id="panel_id" auto_size="true" width="320">
-    Panel content
-    <Panel c:id="nested_panel" height="50%" />
-  </Panel>
-</Screen>
+<layout xmlns:c="urn:blacklight:ui">
+  <style c:id="xx">
+.panel-class { background-color: #263746; padding: 12px; }
+  </style>
+  <Screen c:id="screen_id" style="xx:panel-class">
+    <Panel c:id="panel_id" auto_size="true" width="320" style="xx">
+      Panel content
+      <Button c:id="confirm" auto_size="true">Confirm</Button>
+      <Panel c:id="nested_panel" height="50%" />
+    </Panel>
+  </Screen>
+</layout>
 ```
 
 `auto_size` applies to containers and defaults to `false`. For each axis, an explicit `width` or `height` wins. An unspecified axis becomes content-sized when `auto_size="true"`, or fills the parent when `auto_size="false"`. Bare non-negative numbers are interpreted as pixels; supported dimensions are `px`, `%`, `dp`, `em`, and `auto`. Panels lay out children vertically.
+
+The UI tree injects a base stylesheet for built-in controls. Custom named styles are compiled into the RmlUi document and may override the defaults.
 
 ## Runtime
 

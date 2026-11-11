@@ -1,6 +1,6 @@
 #pragma once
 
-#include "rmlui/UIElement.h"
+#include "rmlui/HTMLElement.h"
 
 #include <memory>
 #include <string>
@@ -21,14 +21,14 @@ struct UIBuildError {
 	std::string message;
 };
 
-/// Builds and owns the RmlUi document corresponding to a parsed screen tree.
+/// Builds and owns the RmlUi document corresponding to a parsed HTML document tree.
 class RmlUiTree final {
 public:
 	/// Closes the owned document; its RmlUi context must still be alive.
 	~RmlUiTree();
 
-	/// Builds a document and replaces tree only after the full tree is created.
-	static bool Build(Rml::Context& context, const UIScreen& screen,
+	/// Builds a document from an HTML element tree and replaces tree only after the full tree is created.
+	static bool Build(Rml::Context& context, const HTMLDocument& document,
 		std::unique_ptr<RmlUiTree>& tree, UIBuildError& error);
 
 	/// Returns the root RmlUi document, or nullptr after Close.

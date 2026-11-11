@@ -17,11 +17,11 @@ namespace BlackLight::Engine
 		{
 			index = static_cast<std::uint32_t>(generations_.size());
 			generations_.push_back(0);
-		alive_.push_back(0);
+			alive_.push_back(0);
 		}
 
 		const Entity entity{index, generations_[index]};
-	alive_[index] = 1;
+		alive_[index] = 1;
 		live_entities_.push_back(entity);
 		return entity;
 	}
@@ -46,15 +46,15 @@ namespace BlackLight::Engine
 		}
 
 		++generations_[entity.index];
-	alive_[entity.index] = 0;
+		alive_[entity.index] = 0;
 		free_indices_.push_back(entity.index);
 	}
 
 	bool World::IsAlive(Entity entity) const noexcept
 	{
-	return entity.index < generations_.size() &&
-		alive_[entity.index] != 0 &&
-		generations_[entity.index] == entity.generation;
+		return entity.index < generations_.size() &&
+			   alive_[entity.index] != 0 &&
+			   generations_[entity.index] == entity.generation;
 	}
 
 	void World::Clear()

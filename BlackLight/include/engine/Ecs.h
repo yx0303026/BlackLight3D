@@ -58,10 +58,10 @@ namespace BlackLight::Engine
 		/// Destroys all entities and their component storage.
 		~World() = default;
 
-	World(const World&) = delete;
-	World& operator=(const World&) = delete;
-	World(World&&) = delete;
-	World& operator=(World&&) = delete;
+		World(const World &) = delete;
+		World &operator=(const World &) = delete;
+		World(World &&) = delete;
+		World &operator=(World &&) = delete;
 
 		/// Creates a new entity, reusing a released slot when possible.
 		Entity CreateEntity();
@@ -133,7 +133,7 @@ namespace BlackLight::Engine
 		const ComponentPool<Component> *FindPool() const;
 
 		std::vector<std::uint32_t> generations_;
-	std::vector<std::uint8_t> alive_;
+		std::vector<std::uint8_t> alive_;
 		std::vector<std::uint32_t> free_indices_;
 		std::vector<Entity> live_entities_;
 		std::unordered_map<ComponentType, std::unique_ptr<ComponentPoolBase>> component_pools_;

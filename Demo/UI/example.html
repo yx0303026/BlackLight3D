@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlackLight3D UI Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+        }
+
+        .app-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #ffffff;
+        }
+
+        /* Header Styles */
+        .header {
+            width: 100%;
+            height: 80px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            padding: 0 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: white;
+            font-size: 28px;
+            font-weight: 600;
+            text-align: center;
+            flex: 1;
+        }
+
+        /* Navigation Styles */
+        .nav-section {
+            display: flex;
+            width: 100%;
+            height: calc(100% - 80px);
+        }
+
+        .sidebar {
+            width: 250px;
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav-item {
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            background-color: #34495e;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .nav-item:hover {
+            background-color: #667eea;
+            transform: translateX(5px);
+        }
+
+        .nav-item.active {
+            background-color: #667eea;
+            font-weight: 600;
+        }
+
+        /* Main Content Area */
+        .content-area {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+        }
+
+        /* Card Component */
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border-left: 4px solid #667eea;
+        }
+
+        .card h2 {
+            color: #2c3e50;
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+
+        .card p {
+            color: #555;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* Grid Layout */
+        .grid-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .grid-item {
+            flex: 0 0 calc(33.333% - 15px);
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        .grid-item h3 {
+            color: #667eea;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+
+        .grid-item-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #2c3e50;
+            margin: 10px 0;
+        }
+
+        .grid-item-unit {
+            color: #95a5a6;
+            font-size: 12px;
+        }
+
+        /* Button Styles */
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 5px;
+            background-color: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .button:hover {
+            background-color: #5568d3;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .button.secondary {
+            background-color: #95a5a6;
+        }
+
+        .button.secondary:hover {
+            background-color: #7f8c8d;
+        }
+
+        .button.danger {
+            background-color: #e74c3c;
+        }
+
+        .button.danger:hover {
+            background-color: #c0392b;
+        }
+
+        /* Footer */
+        .footer {
+            width: 100%;
+            height: 50px;
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            border-top: 1px solid #34495e;
+        }
+
+        /* Input Styles */
+        input[type="text"],
+        input[type="email"],
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #bdc3c7;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        input[type="text"]:focus,
+        input[type="email"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            background-color: #3498db;
+            color: white;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+
+        .badge.success {
+            background-color: #2ecc71;
+        }
+
+        .badge.warning {
+            background-color: #f39c12;
+        }
+
+        .badge.danger {
+            background-color: #e74c3c;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .nav-section {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+                max-height: 200px;
+                display: flex;
+                overflow-x: auto;
+                padding: 10px;
+            }
+
+            .nav-item {
+                flex-shrink: 0;
+                margin-right: 10px;
+                margin-bottom: 0;
+            }
+
+            .grid-item {
+                flex: 0 0 calc(50% - 10px);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .grid-item {
+                flex: 0 0 100%;
+            }
+
+            .content-area {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="app-container">
+        <!-- Header -->
+        <div id="header" class="header">
+            <h1>BlackLight3D UI Dashboard</h1>
+        </div>
+
+        <!-- Main Navigation Section -->
+        <div id="nav-section" class="nav-section">
+            <!-- Sidebar -->
+            <div id="sidebar" class="sidebar">
+                <div class="nav-item active">Dashboard</div>
+                <div class="nav-item">Analytics</div>
+                <div class="nav-item">Settings</div>
+                <div class="nav-item">Users</div>
+                <div class="nav-item">Reports</div>
+                <div class="nav-item">Help</div>
+            </div>
+
+            <!-- Content Area -->
+            <div id="content" class="content-area">
+                <!-- Stats Grid -->
+                <div class="grid-container">
+                    <div class="grid-item">
+                        <h3>Total Users</h3>
+                        <div class="grid-item-value">12,453</div>
+                        <div class="grid-item-unit">Active</div>
+                    </div>
+                    <div class="grid-item">
+                        <h3>Revenue</h3>
+                        <div class="grid-item-value">$45.2K</div>
+                        <div class="grid-item-unit">This Month</div>
+                    </div>
+                    <div class="grid-item">
+                        <h3>Engagement</h3>
+                        <div class="grid-item-value">87.5%</div>
+                        <div class="grid-item-unit">Average</div>
+                    </div>
+                </div>
+
+                <!-- Main Card -->
+                <div class="card">
+                    <h2>Welcome to BlackLight3D <span class="badge success">v1.0</span></h2>
+                    <p>
+                        This dashboard demonstrates the HTML+CSS parser integration with BlackLight3D's UI system.
+                        You can now define your user interfaces using standard HTML and CSS, which are automatically
+                        converted to RmlUI-compatible elements and styles.
+                    </p>
+                </div>
+
+                <!-- Features Card -->
+                <div class="card">
+                    <h2>Key Features</h2>
+                    <p>✓ Standard HTML element support (div, button, input, etc.)</p>
+                    <p>✓ Complete CSS property mapping</p>
+                    <p>✓ Flexbox and Grid layout support</p>
+                    <p>✓ Automatic color conversion</p>
+                    <p>✓ External CSS stylesheet support</p>
+                    <p>✓ Responsive design capabilities</p>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="card">
+                    <h2>Actions</h2>
+                    <button class="button">Create New</button>
+                    <button class="button secondary">Export</button>
+                    <button class="button danger">Delete</button>
+                </div>
+
+                <!-- Form Example -->
+                <div class="card">
+                    <h2>Contact Form</h2>
+                    <input type="text" placeholder="Name" />
+                    <input type="email" placeholder="Email" />
+                    <textarea placeholder="Message" style="height: 100px;"></textarea>
+                    <button class="button">Send Message</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div id="footer" class="footer">
+            BlackLight3D Engine © 2024 | HTML+CSS UI Parser v1.0 | All Rights Reserved
+        </div>
+    </div>
+</body>
+</html>

@@ -59,6 +59,10 @@ BL_LOG_ERROR("Content") << "Missing asset: " << path;
 
 错误 `[RmlUi ERROR] No font engine interface set!` 的直接原因是依赖配置关闭了 RmlUi 的内置字体引擎。构建时启用 FreeType 后，`Rml::Initialise()` 会自动创建默认字体接口；Windows 后端随后从 Windows 系统目录加载 Arial，供 UI 文本使用。UI 树构建时也为文档设置 Arial 和白色文字，避免缺少字体属性警告。重新配置现有构建目录后再构建，避免沿用缓存的 `RMLUI_FONT_ENGINE=none`。
 
+## UI 控件与样式
+
+XML 支持 `Panel`、`Fill`、`Border`、`Button`、`ListBox`、`ListView` 和 `DataGrid` 容器控件。控件共用 `auto_size`、`width`、`height`、`c:id` 与 `style` 属性，并可嵌套子控件。`<layout>` 可包含具备唯一 `c:id` 的 `<style>` 块及一个 `Screen`。`style="xx:panel-class"` 引用 ID 为 `xx` 的内联样式表并为元素添加 `panel-class`；`style="xx"` 只引用样式表。文档会先加载内置基础样式，再加载自定义样式，因此自定义声明可以覆盖基础外观。
+
 ## 构建与回归
 
 在 Visual Studio 开发者环境中：
