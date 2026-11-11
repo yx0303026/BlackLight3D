@@ -2,6 +2,10 @@ add_executable(blacklight_demo
 	src/main.cpp
 )
 
+if(MSVC)
+	target_sources(blacklight_demo PRIVATE app.manifest)
+endif()
+
 set_target_properties(blacklight_demo PROPERTIES
 	CXX_STANDARD 17
 	CXX_STANDARD_REQUIRED YES
@@ -9,7 +13,7 @@ set_target_properties(blacklight_demo PROPERTIES
 )
 
 target_link_libraries(blacklight_demo
-	PRIVATE BlackLight::RmlUi
+	PRIVATE BlackLight::EngineStatic
 	PRIVATE opengl32
 )
 
@@ -24,10 +28,8 @@ else()
 	target_compile_options(blacklight_demo PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-# Copy .bui UI files to build directory
-add_custom_command(TARGET blacklight_demo POST_BUILD
-	COMMAND ${CMAKE_COMMAND} -E copy_directory
-	${CMAKE_CURRENT_SOURCE_DIR}/ui
-	$<TARGET_FILE_DIR:blacklight_demo>/UI
-	COMMENT "Copying .bui UI files to build directory"
+blacklight_embed_bui(blacklight_demo
+	ROOT "${CMAKE_CURRENT_SOURCE_DIR}/ui"
+	NAMESPACE DemoUi
+	FILES Main.bui
 )

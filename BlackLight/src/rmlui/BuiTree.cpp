@@ -1,15 +1,12 @@
 #include "rmlui/BuiTree.h"
 #include "rmlui/BuiDocument.h"
 
-#include <algorithm>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 
 #include <RmlUi/Core.h>
-#include <RmlUi/Core/StreamMemory.h>
-#include <RmlUi/Core/StyleSheetContainer.h>
 
 namespace BlackLight::UI
 {
@@ -17,6 +14,7 @@ namespace BlackLight::UI
 	namespace
 	{
 
+		/// Records the first document construction failure.
 		void SetBuildError(BuiBuildError &error, std::string message)
 		{
 			error.message = std::move(message);
@@ -43,71 +41,60 @@ namespace BlackLight::UI
 
 	}
 
+	/// Creates a wrapper without a document.
 	BuiTree::BuiTree() = default;
 
+	/// Closes the document while its context is still alive.
 	BuiTree::~BuiTree()
 	{
 		Close();
 	}
 
+	/// Loads a full RML document so the native parser processes its head and styles.
 	bool BuiTree::Build(Rml::Context &context, const BuiDocument &bui_document,
 						std::unique_ptr<BuiTree> &tree, BuiBuildError &error)
 	{
 		auto new_tree = std::unique_ptr<BuiTree>(new BuiTree());
 
-		new_tree->document_ = context.CreateDocument();
-		if (!new_tree->document_)
+		const std::string &styles = bui_document.GetStyles();
+		const std::string &layout = bui_document.GetLayout();
+		if (layout.empty())
 		{
-			SetBuildError(error, "Failed to create RmlUi document from context");
+			SetBuildError(error, ".bui layout is empty");
 			return false;
 		}
 
-		// Load stylesheet
-		const std::string &styles = bui_document.GetStyles();
-		if (!styles.empty())
+		const std::string full_rml = "<rml>\n<head>\n<style>\n" + styles +
+			"\n</style>\n</head>\n<body>\n" + layout + "\n</body>\n</rml>\n";
+		new_tree->document_ = context.LoadDocumentFromMemory(full_rml);
+		if (!new_tree->document_)
 		{
-			auto stylesheet_container = std::make_shared<Rml::StyleSheetContainer>();
-			Rml::StreamMemory stream(
-				reinterpret_cast<const Rml::byte *>(styles.data()),
-				styles.size());
-
-			if (!stylesheet_container->LoadStyleSheetContainer(&stream))
-			{
-				SetBuildError(error, "Failed to load CSS stylesheet");
-				new_tree->Close();
-				return false;
-			}
-
-			new_tree->document_->SetStyleSheetContainer(stylesheet_container);
+			SetBuildError(error, "Failed to load RmlUi document from .bui content");
+			return false;
 		}
 
-		// Load layout (raw RmlUi HTML). RmlUi 6.3 parses document markup through
-		// Context::LoadDocumentFromMemory; ElementDocument no longer exposes the
-		// old LoadChildrenFromStream/GetBody helpers.
-		const std::string &layout = bui_document.GetLayout();
-		if (!layout.empty())
+		if (!new_tree->document_->GetNumChildren())
 		{
-			new_tree->document_->SetInnerRML(layout);
-			if (!new_tree->document_->GetNumChildren())
-			{
-				SetBuildError(error, "Failed to load layout HTML");
-				new_tree->Close();
-				return false;
-			}
+			SetBuildError(error, "Failed to load layout HTML - document has no children");
+			new_tree->Close();
+			return false;
 		}
 
 		// Map all element IDs for later lookup
 		MapElementIds(*new_tree->document_, new_tree->elements_by_id_);
 
 		tree = std::move(new_tree);
+		error = {};
 		return true;
 	}
 
+	/// Returns the document until Close invalidates it.
 	Rml::ElementDocument *BuiTree::GetDocument() const noexcept
 	{
 		return document_;
 	}
 
+	/// Resolves an element from the document's initial ID index.
 	Rml::Element *BuiTree::FindById(std::string_view id) const
 	{
 		auto it = elements_by_id_.find(std::string(id));
@@ -118,6 +105,7 @@ namespace BlackLight::UI
 		return nullptr;
 	}
 
+	/// Makes the loaded document visible.
 	void BuiTree::Show()
 	{
 		if (document_)
@@ -126,6 +114,7 @@ namespace BlackLight::UI
 		}
 	}
 
+	/// Unloads the document and clears the borrowed element pointers.
 	void BuiTree::Close()
 	{
 		if (document_)

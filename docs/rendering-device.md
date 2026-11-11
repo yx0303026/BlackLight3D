@@ -34,6 +34,33 @@ RmlUi is optional. `RenderingDevice::GetUiContext()` returns a context only when
 device has a UI adapter installed. The core device interface itself remains usable
 without RmlUi.
 
+The OpenGL device installs the official RmlUi 6.3 GL2 renderer and Win32 platform
+adapter when `DeviceConfig::enable_ui` is true. It forwards native input, updates
+context dimensions on resize, and calls `Context::Update()` and `Context::Render()`
+from `RenderUi()`. UI documents must be closed before device shutdown. Render
+managers and the core are released while the WGL context is still current.
+Platform and renderer implementations remain private to the engine sources.
+The Direct3D 11 device currently has no UI adapter and returns a null UI context.
+
+See [Demo RmlUi integration investigation](demo-rmlui-fix.md) for the startup
+failure, the upstream sources checked, and verification details.
+
+## Display DPI
+
+The host executable selects its process DPI awareness. The Demo embeds a
+PerMonitorV2 manifest; SDK consumers should declare the same awareness in their
+own executable. The engine does not change the host process's DPI policy.
+
+For a DPI-aware host, OpenGL surface dimensions and the viewport use native client
+pixels. The RmlUi context receives `GetDpiForWindow() / 96` as its dp ratio.
+Use `dp` in styles for dimensions that should follow display scaling. The Demo
+converts its initial 1280 by 720 dp size to native pixels on the primary display.
+Owned windows apply the recommended rectangle on `WM_DPICHANGED`; attached
+windows leave that resize decision to their host.
+
+See [Demo DPI investigation](demo-dpi-fix.md) for the observed 150% scaling issue
+and the runtime measurements after the fix.
+
 ## Shader contract
 
 `ShaderSource` documents an explicit OpenGL and Direct3D11 source variant. The current

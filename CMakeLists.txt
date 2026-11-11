@@ -37,3 +37,4 @@ endif()
 
 add_subdirectory(BlackLight)
 add_subdirectory(Demo)
+add_subdirectory(BlackLightEditor)

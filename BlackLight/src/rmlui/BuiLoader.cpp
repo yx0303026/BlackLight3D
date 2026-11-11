@@ -14,24 +14,13 @@ namespace BlackLight::UI
 	namespace
 	{
 
+		/// Checks whitespace without passing signed characters to the C locale API.
 		bool IsSpace(char value)
 		{
 			return std::isspace(static_cast<unsigned char>(value)) != 0;
 		}
 
-		std::string_view Trim(std::string_view value)
-		{
-			while (!value.empty() && IsSpace(value.front()))
-			{
-				value.remove_prefix(1);
-			}
-			while (!value.empty() && IsSpace(value.back()))
-			{
-				value.remove_suffix(1);
-			}
-			return value;
-		}
-
+		/// Normalizes container tag names for case-insensitive comparisons.
 		std::string ToLower(std::string_view value)
 		{
 			std::string result(value);
@@ -42,6 +31,7 @@ namespace BlackLight::UI
 			return result;
 		}
 
+		/// Converts a byte offset into a one-based diagnostic line.
 		std::size_t GetLineNumber(std::string_view content, std::size_t position)
 		{
 			std::size_t line = 1;
@@ -55,6 +45,7 @@ namespace BlackLight::UI
 			return line;
 		}
 
+		/// Tracks forward progress while scanning the raw-content container.
 		struct ParseState
 		{
 			std::string_view content;
@@ -62,6 +53,7 @@ namespace BlackLight::UI
 			std::string error_message;
 		};
 
+		/// Advances past whitespace and reports whether input remains.
 		bool SkipWhitespace(ParseState &state)
 		{
 			while (state.position < state.content.size() &&
@@ -72,46 +64,7 @@ namespace BlackLight::UI
 			return state.position < state.content.size();
 		}
 
-		bool ExpectChar(ParseState &state, char ch)
-		{
-			if (!SkipWhitespace(state))
-			{
-				return false;
-			}
-			if (state.content[state.position] != ch)
-			{
-				return false;
-			}
-			++state.position;
-			return true;
-		}
-
-		std::string_view ExtractTagName(std::string_view tag_content)
-		{
-			std::size_t end = 0;
-			while (end < tag_content.size() &&
-				   (std::isalnum(static_cast<unsigned char>(tag_content[end])) ||
-					tag_content[end] == '_' || tag_content[end] == '-'))
-			{
-				++end;
-			}
-			return tag_content.substr(0, end);
-		}
-
-		std::string_view ExtractText(ParseState &state)
-		{
-			std::size_t start = state.position;
-			std::size_t end = start;
-
-			while (end < state.content.size() && state.content[end] != '<')
-			{
-				++end;
-			}
-
-			state.position = end;
-			return state.content.substr(start, end - start);
-		}
-
+		/// Reads a container or layout tag without consuming its inner content.
 		bool ParseTag(ParseState &state, std::string &tag_name, bool &is_closing)
 		{
 			if (!SkipWhitespace(state) || state.content[state.position] != '<')
@@ -168,6 +121,7 @@ namespace BlackLight::UI
 			return true;
 		}
 
+		/// Extracts raw CSS or RML while ensuring every scan iteration advances.
 		bool ExtractSection(ParseState &state, const std::string &section_name, std::string &content)
 		{
 			// Find opening tag
@@ -194,24 +148,24 @@ namespace BlackLight::UI
 
 					while (state.position < state.content.size())
 					{
+						const std::size_t tag_start = state.content.find('<', state.position);
+						if (tag_start == std::string_view::npos)
+						{
+							state.position = state.content.size();
+							return false;
+						}
+						state.position = tag_start;
 						if (!ParseTag(state, tag_name, is_closing))
 						{
-							// Treat remaining as content if no more tags
-							if (state.position >= state.content.size())
-							{
-								content = std::string(state.content.substr(content_start));
-								return true;
-							}
+							if (state.position < state.content.size())
+								++state.position;
 							continue;
 						}
 
 						if (ToLower(tag_name) == ToLower(section_name) && is_closing)
 						{
 							// Found closing tag
-							content = std::string(
-								state.content.substr(content_start,
-													 state.position - content_start - (tag_name.size() + 3)) // < / tag >
-							);
+							content = std::string(state.content.substr(content_start, tag_start - content_start));
 							// Trim trailing whitespace
 							while (!content.empty() && IsSpace(content.back()))
 							{
@@ -220,17 +174,18 @@ namespace BlackLight::UI
 							return true;
 						}
 					}
-					return true;
+					return false;
 				}
 			}
 
 			return false;
 		}
 
+		/// Requires both sections and preserves their raw CSS and RML text.
 		bool ParseBuiXml(std::string_view bui_content, std::string &styles, std::string &layout,
 						 BuiLoadError &error)
 		{
-			ParseState state{bui_content};
+			ParseState state{bui_content, 0, {}};
 
 			std::string styles_content;
 			std::string layout_content;
@@ -239,7 +194,7 @@ namespace BlackLight::UI
 			if (!ExtractSection(state, "styles", styles_content))
 			{
 				error.line = GetLineNumber(bui_content, state.position);
-				error.message = "Missing <styles> section";
+				error.message = "Missing or unclosed <styles> section";
 				return false;
 			}
 
@@ -248,7 +203,7 @@ namespace BlackLight::UI
 			if (!ExtractSection(state, "layout", layout_content))
 			{
 				error.line = GetLineNumber(bui_content, state.position);
-				error.message = "Missing <layout> section";
+				error.message = "Missing or unclosed <layout> section";
 				return false;
 			}
 
@@ -259,11 +214,12 @@ namespace BlackLight::UI
 
 	} // namespace
 
+	/// Reads the complete file before parsing its raw-content container.
 	bool BuiLoader::LoadFromFile(std::string_view file_path,
 								 std::unique_ptr<BuiDocument> &document, BuiLoadError &error)
 	{
 
-		std::ifstream file(file_path.data(), std::ios::binary);
+		std::ifstream file(std::string(file_path), std::ios::binary);
 		if (!file)
 		{
 			error.message = "Failed to open file: ";
@@ -286,6 +242,7 @@ namespace BlackLight::UI
 		return Parse(content, document, error);
 	}
 
+	/// Produces a document only after both required sections have loaded.
 	bool BuiLoader::Parse(std::string_view bui_content,
 						  std::unique_ptr<BuiDocument> &document, BuiLoadError &error)
 	{

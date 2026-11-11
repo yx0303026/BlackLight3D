@@ -1,0 +1,860 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bui>
+  <styles>
+    html, body {
+      display: block;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: Arial;
+      font-size: 12dp;
+      color: @text;
+      background-color: @bg;
+    }
+
+    div, span {
+      box-sizing: border-box;
+    }
+
+    div {
+      display: block;
+    }
+
+    button {
+      font-family: Arial;
+      font-size: 12dp;
+      margin: 0;
+      border-width: 0;
+    }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Menu bar */
+    .menu-bar {
+      display: flex;
+      flex-direction: row;
+      height: 30dp;
+      flex-shrink: 0;
+      background-color: @surface-alt;
+      border-bottom: 1dp @border;
+    }
+
+    .menu-bar-items {
+      display: flex;
+      flex-direction: row;
+      flex: 1 1 auto;
+    }
+
+    .menu-bar-brand {
+      display: block;
+      padding: 8dp 12dp 0 12dp;
+      color: @text-muted;
+      font-size: 11dp;
+      white-space: nowrap;
+    }
+
+    .menu-root {
+      position: relative;
+      height: 30dp;
+    }
+
+    .menu-button {
+      display: block;
+      height: 30dp;
+      padding: 8dp 12dp 0 12dp;
+      color: @text;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .menu-button:hover {
+      background-color: @hover;
+    }
+
+    .menu-dropdown {
+      position: absolute;
+      top: 30dp;
+      left: 0;
+      z-index: 200;
+      display: none;
+      min-width: 240dp;
+      padding: 4dp 0;
+      background-color: @elevated;
+      border: 1dp @border-strong;
+    }
+
+    .menu-dropdown.open {
+      display: block;
+    }
+
+    .menu-item {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 8dp;
+      padding: 5dp 10dp;
+      color: @text;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .menu-item:hover {
+      background-color: @accent;
+      color: #ffffff;
+    }
+
+    .menu-item.disabled {
+      color: @text-muted;
+      cursor: default;
+    }
+
+    .menu-item.disabled:hover {
+      background-color: @elevated;
+      color: @text-muted;
+    }
+
+    .menu-check {
+      display: block;
+      width: 12dp;
+    }
+
+    .menu-label {
+      display: block;
+      flex: 1 1 auto;
+    }
+
+    .menu-shortcut {
+      display: block;
+      color: @text-muted;
+      font-size: 11dp;
+    }
+
+    .menu-item:hover .menu-shortcut {
+      color: #ffffff;
+    }
+
+    .menu-separator {
+      height: 1dp;
+      background-color: @border;
+      margin: 4dp 0;
+    }
+
+    /* Toolbar */
+    .toolbar {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 4dp;
+      height: 38dp;
+      flex-shrink: 0;
+      padding: 6dp 8dp;
+      background-color: @surface;
+      border-bottom: 1dp @border;
+    }
+
+    .tool-button {
+      padding: 5dp 10dp;
+      background-color: transparent;
+      color: @text;
+      border-radius: 3dp;
+      cursor: pointer;
+    }
+
+    .tool-button:hover {
+      background-color: @hover;
+    }
+
+    .tool-button:active {
+      background-color: @selection;
+    }
+
+    .tool-button.disabled {
+      color: @text-muted;
+    }
+
+    .tool-button.mode-active {
+      background-color: @selection;
+      color: @text;
+    }
+
+    .toolbar-separator {
+      width: 1dp;
+      height: 20dp;
+      margin: 0 4dp;
+      background-color: @border;
+    }
+
+    .toolbar-spacer {
+      flex: 1 1 auto;
+    }
+
+    /* Docks */
+    .main-area {
+      display: flex;
+      flex-direction: row;
+      flex: 1 1 auto;
+      gap: 4dp;
+      padding: 4dp;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .dock {
+      display: flex;
+      flex-direction: column;
+      background-color: @surface;
+      border: 1dp @border;
+      overflow: hidden;
+    }
+
+    .dock-left {
+      flex: 0 0 250dp;
+    }
+
+    .dock-center {
+      flex: 1 1 auto;
+    }
+
+    .dock-right {
+      flex: 0 0 290dp;
+    }
+
+    .dock-bottom {
+      flex: 0 0 175dp;
+      margin: 0 4dp 4dp 4dp;
+    }
+
+    .dock-tabs {
+      display: flex;
+      flex-direction: row;
+      flex-shrink: 0;
+      min-height: 27dp;
+      background-color: @surface-alt;
+      border-bottom: 1dp @border;
+      overflow-x: hidden;
+    }
+
+    .dock-tab {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 6dp;
+      padding: 5dp 10dp;
+      color: @text-muted;
+      border-right: 1dp @border;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .dock-tab:hover {
+      background-color: @hover;
+      color: @text;
+    }
+
+    .dock-tab.active {
+      background-color: @surface;
+      color: @text;
+      border-top: 2dp @accent;
+    }
+
+    .dock-tab-close {
+      display: block;
+      min-width: 16dp;
+      padding: 0 2dp;
+      color: @text-muted;
+      font-size: 12dp;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    .icon-font .dock-tab-close {
+      font-family: BlackLightIcons;
+      font-size: 10dp;
+      font-weight: normal;
+      line-height: 14dp;
+    }
+
+    .dock-tab-close:hover {
+      color: @error;
+    }
+
+    .dock-content {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .panel {
+      display: none;
+      flex-direction: column;
+      flex: 1 1 auto;
+      overflow: hidden;
+    }
+
+    .panel.active {
+      display: flex;
+    }
+
+    .panel-body {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      padding: 6dp;
+      overflow-y: auto;
+    }
+
+    /* Status bar */
+    .status-bar {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 12dp;
+      height: 24dp;
+      flex-shrink: 0;
+      padding: 0 10dp;
+      background-color: @surface-alt;
+      border-top: 1dp @border;
+      color: @text-muted;
+      font-size: 11dp;
+    }
+
+    .status-message {
+      display: block;
+      flex: 1 1 auto;
+      color: @text;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .status-item {
+      display: block;
+      white-space: nowrap;
+    }
+
+    .status-mode {
+      color: @accent;
+    }
+
+    .status-mode.play {
+      color: @success;
+    }
+
+    .status-mode.pause {
+      color: @warning;
+    }
+
+    /* Panel content */
+    .empty {
+      display: block;
+      padding: 14dp;
+      color: @text-muted;
+      text-align: center;
+    }
+
+    .panel-hint {
+      display: block;
+      padding: 8dp 4dp;
+      color: @text-muted;
+      font-size: 11dp;
+    }
+
+    .scene-row, .asset-row {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 8dp;
+      padding: 4dp 6dp;
+      color: @text;
+      border-radius: 3dp;
+      cursor: pointer;
+    }
+
+    .scene-row:hover, .asset-row:hover {
+      background-color: @hover;
+    }
+
+    .scene-row.selected, .asset-row.selected {
+      background-color: @selection;
+    }
+
+    .scene-name, .asset-name {
+      display: block;
+      flex: 1 1 auto;
+    }
+
+    .kind {
+      display: block;
+      color: @text-muted;
+      font-size: 11dp;
+    }
+
+    .inspector-section {
+      display: block;
+      margin: 8dp 0 4dp 0;
+      padding-bottom: 4dp;
+      color: @accent;
+      font-size: 11dp;
+      border-bottom: 1dp @border;
+    }
+
+    .inspector-row {
+      display: flex;
+      flex-direction: row;
+      gap: 8dp;
+      padding: 2dp 0;
+    }
+
+    .inspector-label {
+      display: block;
+      width: 76dp;
+      color: @text-muted;
+    }
+
+    .inspector-value {
+      display: block;
+      flex: 1 1 auto;
+      overflow: hidden;
+    }
+
+    .history-row {
+      display: block;
+      padding: 3dp 6dp;
+      color: @text;
+      border-radius: 3dp;
+    }
+
+    .history-current {
+      background-color: @selection;
+    }
+
+    .log-line {
+      display: block;
+      padding: 1dp 4dp;
+      color: @text;
+      font-size: 11dp;
+    }
+
+    .log-warning {
+      color: @warning;
+    }
+
+    .log-error {
+      color: @error;
+    }
+
+    .log-trace {
+      color: @text-muted;
+    }
+
+    /* Welcome viewport */
+    .viewport-hero {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      align-items: center;
+      justify-content: center;
+      gap: 6dp;
+      padding: 20dp;
+      text-align: center;
+    }
+
+    .viewport-title {
+      display: block;
+      color: @accent;
+      font-size: 24dp;
+      font-weight: bold;
+    }
+
+    .viewport-subtitle {
+      display: block;
+      color: @text;
+      font-size: 13dp;
+    }
+
+    .viewport-meta {
+      display: block;
+      color: @text-muted;
+    }
+
+    .viewport-actions {
+      display: flex;
+      flex-direction: row;
+      gap: 10dp;
+      margin-top: 10dp;
+    }
+
+    .accent-button {
+      display: block;
+      padding: 7dp 14dp;
+      background-color: @accent;
+      color: #ffffff;
+      border-radius: 4dp;
+      cursor: pointer;
+    }
+
+    .accent-button:hover {
+      background-color: @accent-hover;
+    }
+
+    .accent-button:active {
+      background-color: @accent-active;
+    }
+
+    .ghost-button {
+      display: block;
+      padding: 7dp 14dp;
+      background-color: @surface-alt;
+      color: @text;
+      border: 1dp @border-strong;
+      border-radius: 4dp;
+      cursor: pointer;
+    }
+
+    .ghost-button:hover {
+      background-color: @hover;
+    }
+
+    .viewport-section-title {
+      display: block;
+      margin-top: 16dp;
+      color: @text-muted;
+      font-size: 11dp;
+    }
+
+    .viewport-empty {
+      display: block;
+      color: @text-muted;
+    }
+
+    .recent-list {
+      display: flex;
+      flex-direction: column;
+      gap: 3dp;
+      width: 460dp;
+      max-width: 100%;
+    }
+
+    .recent-row {
+      display: block;
+      padding: 4dp 8dp;
+      background-color: @surface-alt;
+      color: @text;
+      border-radius: 3dp;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .recent-row:hover {
+      background-color: @hover;
+    }
+
+    /* Project creation wizard */
+    .wizard-overlay {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 500;
+      display: block;
+      background-color: rgba(0, 0, 0, 170);
+    }
+
+    .wizard-dialog {
+      display: block;
+      width: 640dp;
+      margin-left: auto;
+      margin-right: auto;
+      margin-top: 40dp;
+      padding: 16dp;
+      background-color: @elevated;
+      border: 1dp @border-strong;
+    }
+
+    .wizard-title {
+      display: block;
+      font-size: 18dp;
+      font-weight: bold;
+      color: @text;
+    }
+
+    .wizard-subtitle {
+      display: block;
+      margin-top: 2dp;
+      color: @text-muted;
+    }
+
+    .wizard-section {
+      display: block;
+      margin-top: 10dp;
+      padding-bottom: 3dp;
+      color: @accent;
+      font-size: 11dp;
+      border-bottom: 1dp @border;
+    }
+
+    .wizard-options {
+      display: flex;
+      flex-direction: row;
+      margin-top: 6dp;
+    }
+
+    .wizard-option {
+      display: block;
+      width: 200dp;
+      padding: 8dp;
+      margin-right: 8dp;
+      background-color: @surface-alt;
+      border: 1dp @border;
+      cursor: pointer;
+    }
+
+    .wizard-option:hover {
+      background-color: @hover;
+    }
+
+    .wizard-option.selected {
+      border: 1dp @accent;
+      background-color: @selection;
+    }
+
+    .wizard-option-title {
+      display: block;
+      color: @text;
+      font-weight: bold;
+    }
+
+    .wizard-option-desc {
+      display: block;
+      margin-top: 2dp;
+      color: @text-muted;
+      font-size: 11dp;
+    }
+
+    .wizard-row {
+      display: flex;
+      flex-direction: row;
+      margin-top: 6dp;
+    }
+
+    .wizard-field {
+      display: block;
+      margin-top: 6dp;
+    }
+
+    .wizard-field-half {
+      display: block;
+      width: 299dp;
+    }
+
+    .wizard-field-second {
+      margin-left: 8dp;
+    }
+
+    .wizard-label {
+      display: block;
+      color: @text-muted;
+      font-size: 11dp;
+    }
+
+    .wizard-input {
+      display: block;
+      box-sizing: border-box;
+      width: 606dp;
+      height: 24dp;
+      padding: 2dp 6dp;
+      background-color: @surface-alt;
+      border: 1dp @border-strong;
+      color: @text;
+      font-family: Arial;
+      font-size: 12dp;
+    }
+
+    .wizard-input-half {
+      width: 299dp;
+    }
+
+    .wizard-input-location {
+      width: 500dp;
+    }
+
+    .wizard-browse {
+      margin-left: 8dp;
+    }
+
+    .wizard-hint {
+      display: block;
+      margin-top: 4dp;
+      color: @text-muted;
+      font-size: 11dp;
+    }
+
+    .wizard-error {
+      display: block;
+      margin-top: 6dp;
+      padding: 6dp 8dp;
+      background-color: @surface-alt;
+      border: 1dp @error;
+      color: @error;
+      font-size: 11dp;
+    }
+
+    .wizard-buttons {
+      display: flex;
+      flex-direction: row;
+      margin-top: 10dp;
+    }
+
+    .wizard-spacer {
+      flex: 1 1 auto;
+    }
+
+    .wizard-create {
+      margin-left: 8dp;
+    }
+
+    /* Keep this rule last so it wins over every component display rule. */
+    .hidden {
+      display: none;
+    }
+  </styles>
+
+  <layout>
+    <div id="editor_root" class="app">
+      <div id="menu_bar" class="menu-bar">
+        <div id="menu_bar_items" class="menu-bar-items"></div>
+        <div class="menu-bar-brand">BlackLightEditor</div>
+      </div>
+
+      <div id="toolbar" class="toolbar">
+        <button id="tool_new" class="tool-button" data-command="file.new">New</button>
+        <button id="tool_open" class="tool-button" data-command="file.open">Open</button>
+        <button id="tool_project" class="tool-button" data-command="project.new">New Project</button>
+        <button id="tool_save" class="tool-button" data-command="file.save">Save</button>
+        <div class="toolbar-separator"></div>
+        <button id="tool_undo" class="tool-button" data-command="edit.undo">Undo</button>
+        <button id="tool_redo" class="tool-button" data-command="edit.redo">Redo</button>
+        <div class="toolbar-separator"></div>
+        <button id="tool_add" class="tool-button" data-command="object.add">Add Object</button>
+        <button id="tool_delete" class="tool-button" data-command="object.delete">Delete</button>
+        <div class="toolbar-spacer"></div>
+        <button id="tool_mode_edit" class="tool-button" data-command="mode.edit">Edit</button>
+        <button id="tool_mode_play" class="tool-button" data-command="mode.play">Play</button>
+        <button id="tool_mode_pause" class="tool-button" data-command="mode.pause">Pause</button>
+      </div>
+
+      <div class="main-area">
+        <div id="dock_left" class="dock dock-left">
+          <div id="dock_left_tabs" class="dock-tabs"></div>
+          <div id="dock_left_content" class="dock-content"></div>
+        </div>
+
+        <div id="dock_center" class="dock dock-center">
+          <div id="dock_center_tabs" class="dock-tabs"></div>
+          <div id="dock_center_content" class="dock-content"></div>
+        </div>
+
+        <div id="dock_right" class="dock dock-right">
+          <div id="dock_right_tabs" class="dock-tabs"></div>
+          <div id="dock_right_content" class="dock-content"></div>
+        </div>
+      </div>
+
+      <div id="dock_bottom" class="dock dock-bottom">
+        <div id="dock_bottom_tabs" class="dock-tabs"></div>
+        <div id="dock_bottom_content" class="dock-content"></div>
+      </div>
+
+      <div id="status_bar" class="status-bar">
+        <div id="status_message" class="status-message">Ready</div>
+        <div id="status_undo" class="status-item">Undo: -</div>
+        <div id="status_objects" class="status-item">0 objects</div>
+        <div id="status_mode" class="status-item status-mode">Edit</div>
+        <div id="status_project" class="status-item">No project</div>
+        <div id="status_document" class="status-item">No workspace</div>
+        <div id="status_theme" class="status-item">Dark</div>
+      </div>
+
+      <div id="project_wizard" class="wizard-overlay hidden">
+        <div class="wizard-dialog">
+          <div class="wizard-title">Create Project</div>
+          <div class="wizard-subtitle">Generate a CMake + Ninja project that references the BlackLight engine.</div>
+
+          <div class="wizard-section">Project type</div>
+          <div class="wizard-options">
+            <div id="wizard_kind_windows" class="wizard-option selected" data-action="wizard:kind:WindowsApp">
+              <span class="wizard-option-title">Windows App</span>
+              <span class="wizard-option-desc">Desktop window with a selectable graphics API.</span>
+            </div>
+            <div id="wizard_kind_game" class="wizard-option" data-action="wizard:kind:BlackLightGame">
+              <span class="wizard-option-title">BlackLightGame</span>
+              <span class="wizard-option-desc">Game loop with fixed and variable updates.</span>
+            </div>
+            <div id="wizard_kind_inject" class="wizard-option" data-action="wizard:kind:BlockLightUIInject">
+              <span class="wizard-option-title">BlockLightUIInject</span>
+              <span class="wizard-option-desc">DLL shell with an exported plugin API.</span>
+            </div>
+          </div>
+          <div id="wizard_kind_hint" class="wizard-hint">A desktop window with a selectable graphics API.</div>
+
+          <div class="wizard-section">Details</div>
+          <div class="wizard-row">
+            <div class="wizard-field wizard-field-half">
+              <div class="wizard-label">Project name</div>
+              <input id="wizard_name" class="wizard-input wizard-input-half" type="text" value="MyProject"/>
+            </div>
+            <div class="wizard-field wizard-field-half wizard-field-second">
+              <div class="wizard-label">C++ namespace</div>
+              <input id="wizard_namespace" class="wizard-input wizard-input-half" type="text" value="MyProject"/>
+            </div>
+          </div>
+          <div class="wizard-field">
+            <div class="wizard-label">Location</div>
+            <div class="wizard-row">
+              <input id="wizard_location" class="wizard-input wizard-input-location" type="text" value=""/>
+              <div class="ghost-button wizard-browse" data-action="wizard:browse">Browse...</div>
+            </div>
+          </div>
+          <div class="wizard-field">
+            <div class="wizard-label">BlackLight engine root</div>
+            <input id="wizard_engine" class="wizard-input" type="text" value=""/>
+          </div>
+
+          <div id="wizard_graphics_section">
+            <div class="wizard-section">Graphics API</div>
+            <div class="wizard-options">
+              <div id="wizard_api_opengl" class="wizard-option selected" data-action="wizard:graphics:OpenGL">
+                <span class="wizard-option-title">OpenGL</span>
+                <span class="wizard-option-desc">Reference backend.</span>
+              </div>
+              <div id="wizard_api_dx11" class="wizard-option" data-action="wizard:graphics:DirectX11">
+                <span class="wizard-option-title">DirectX 11</span>
+                <span class="wizard-option-desc">Direct3D 11 device.</span>
+              </div>
+              <div id="wizard_api_dx12" class="wizard-option" data-action="wizard:graphics:DirectX12">
+                <span class="wizard-option-title">DirectX 12</span>
+                <span class="wizard-option-desc">Falls back to D3D11 for now.</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="wizard_error" class="wizard-error hidden"></div>
+          <div class="wizard-buttons">
+            <div class="wizard-spacer"></div>
+            <div class="ghost-button" data-action="wizard:cancel">Cancel</div>
+            <div class="accent-button wizard-create" data-action="wizard:create">Create Project</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </layout>
+</bui>

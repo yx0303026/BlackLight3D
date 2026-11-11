@@ -4,7 +4,7 @@ BlackLight Engine is a C++17 engine SDK backed by RmlUi. Each build produces a s
 
 ## Build
 
-The project uses CMake with the Ninja generator. CMake first looks for RmlUi 6.3 and TinyXML2 11 packages. If either is missing, the default configuration fetches those pinned versions. Run these commands from a Visual Studio Developer PowerShell with CMake and Ninja available:
+The project uses CMake with the Ninja generator. CMake looks for a static RmlUi 6.3 package and otherwise fetches pinned RmlUi 6.3 and FreeType 2.13.3 sources. Both fetched dependencies build as static libraries. Run these commands from a Visual Studio Developer PowerShell with CMake and Ninja available:
 
 ```powershell
 $env:PATH = "D:\VisualStudio2026\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;$env:PATH"
@@ -17,7 +17,25 @@ cmake --build --preset x64-debug --target blacklight_engine_package
 The four presets are `x64-debug`, `x64-release`, `x86-debug`, and `x86-release`. Their build trees and target artifacts are kept under `build/{x64|x86}/{debug|release}`.
 
 The package contains `blacklight_engine_<arch>.dll`, its import library,
-`blacklight_engine_<arch>_static.lib`, and the public `include/*.h` headers.
+`blacklight_engine_<arch>_static.lib`, the UI dependency static libraries, public
+headers, and the CMake BUI embedding helper.
+
+The Demo embeds `Demo/ui/Main.bui` into its executable and links the static engine.
+It runs without `rmlui.dll`, a FreeType DLL, or a separate `UI` directory.
+See [`docs/embedded-ui.md`](docs/embedded-ui.md) for embedding UI in other targets
+and linking the static SDK.
+
+The Editor target embeds `BlackLightEditor/ui/Editor.bui` and implements the
+stage-one editor core framework: application shell, event bus, configuration,
+editor state, commands with undo/redo, menus, toolbar, shortcuts, dockable
+panels, and swappable themes. See
+[`BlackLightEditor/README.md`](BlackLightEditor/README.md) for the architecture
+and controls. Build and run it with:
+
+```powershell
+cmake --build --preset x64-debug --target blacklight_editor
+& build/x64/debug/blacklight_editor.exe
+```
 
 ## Engine Runtime
 

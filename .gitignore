@@ -4,3 +4,4 @@
 *.log
 *.bat
 *.ps1
+CMakeFiles/
