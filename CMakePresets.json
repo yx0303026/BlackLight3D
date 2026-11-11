@@ -1,0 +1,110 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "x64-debug",
+      "displayName": "Ninja x64 Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/x64/debug",
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "17",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BLACKLIGHT_ARCH": "x64",
+        "BLACKLIGHT_BUILD_TESTS": "ON",
+        "BLACKLIGHT_FETCH_DEPENDENCIES": "ON"
+      }
+    },
+    {
+      "name": "x64-release",
+      "displayName": "Ninja x64 Release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/x64/release",
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "17",
+        "CMAKE_BUILD_TYPE": "Release",
+        "BLACKLIGHT_ARCH": "x64",
+        "BLACKLIGHT_BUILD_TESTS": "ON",
+        "BLACKLIGHT_FETCH_DEPENDENCIES": "ON"
+      }
+    },
+    {
+      "name": "x86-debug",
+      "displayName": "Ninja x86 Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/x86/debug",
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "17",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BLACKLIGHT_ARCH": "x86",
+        "BLACKLIGHT_BUILD_TESTS": "ON",
+        "BLACKLIGHT_FETCH_DEPENDENCIES": "ON"
+      }
+    },
+    {
+      "name": "x86-release",
+      "displayName": "Ninja x86 Release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/x86/release",
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "17",
+        "CMAKE_BUILD_TYPE": "Release",
+        "BLACKLIGHT_ARCH": "x86",
+        "BLACKLIGHT_BUILD_TESTS": "ON",
+        "BLACKLIGHT_FETCH_DEPENDENCIES": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "x64-debug",
+      "configurePreset": "x64-debug"
+    },
+    {
+      "name": "x64-release",
+      "configurePreset": "x64-release"
+    },
+    {
+      "name": "x86-debug",
+      "configurePreset": "x86-debug"
+    },
+    {
+      "name": "x86-release",
+      "configurePreset": "x86-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "x64-debug",
+      "configurePreset": "x64-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "x64-release",
+      "configurePreset": "x64-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "x86-debug",
+      "configurePreset": "x86-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "x86-release",
+      "configurePreset": "x86-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

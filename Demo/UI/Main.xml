@@ -1,0 +1,13 @@
+<Screen xmlns:c="urn:blacklight:ui" c:id="main_screen">
+  <Panel c:id="title_panel" auto_size="true" width="320px">
+    Welcome to BlackLight3D
+  </Panel>
+  <Panel c:id="content_panel" width="100%" height="200px">
+    <Panel c:id="left_panel" width="50%" height="100%">
+      Left Content
+    </Panel>
+    <Panel c:id="right_panel" width="50%" height="100%">
+      Right Content
+    </Panel>
+  </Panel>
+</Screen>

@@ -1,0 +1,6 @@
+/build/
+/out/
+/_CPack_Packages/
+*.log
+*.bat
+*.ps1
