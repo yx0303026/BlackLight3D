@@ -19,6 +19,18 @@ The four presets are `x64-debug`, `x64-release`, `x86-debug`, and `x86-release`.
 The package contains `blacklight_engine_<arch>.dll`, its import library,
 `blacklight_engine_<arch>_static.lib`, and the public `include/*.h` headers.
 
+## Engine Runtime
+
+The public engine runtime now includes a host-independent `Game` loop, fixed-step
+timing, platform input snapshots, generation-safe ECS entities, rooted content
+caching, math primitives, and a deferred `SpriteBatch` command collector. Start
+from `BlackLight/include/engine/Game.h` when building a game host. The runtime
+keeps rendering behind `IGraphicsBackend`, so a DirectX or Vulkan backend can be
+added without changing gameplay code.
+
+The implementation notes and the current RmlUi backend boundary are documented in
+[`docs/engine-core.md`](docs/engine-core.md).
+
 To require locally installed packages, configure with `-DBLACKLIGHT_FETCH_DEPENDENCIES=OFF`. Disable tests with `-DBLACKLIGHT_BUILD_TESTS=OFF`.
 
 ## XML

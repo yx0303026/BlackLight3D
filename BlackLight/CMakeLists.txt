@@ -48,6 +48,15 @@ set(BLACKLIGHT_ENGINE_SOURCES
 	src/rmlui/RmlUiTree.cpp
 	src/rmlui/UIElement.cpp
 	src/rmlui/UIXmlParser.cpp
+	src/engine/Content.cpp
+	src/engine/Ecs.cpp
+	src/engine/Game.cpp
+	src/engine/GraphicsBackendRegistry.cpp
+	src/engine/GraphicsBackend.cpp
+	src/engine/Input.cpp
+	src/engine/SpriteBatch.cpp
+	src/engine/Time.cpp
+	src/engine/backends/WindowsOpenGLBackend.cpp
 )
 
 add_library(blacklight_engine SHARED ${BLACKLIGHT_ENGINE_SOURCES})
@@ -82,18 +91,18 @@ target_include_directories(blacklight_engine_static
 
 target_link_libraries(blacklight_engine
 	PUBLIC RmlUi::Core
-	PRIVATE tinyxml2::tinyxml2
+	PRIVATE tinyxml2::tinyxml2 opengl32
 )
 target_link_libraries(blacklight_engine_static
 	PUBLIC RmlUi::Core
-	PRIVATE tinyxml2::tinyxml2
+	PRIVATE tinyxml2::tinyxml2 opengl32
 )
 target_compile_definitions(blacklight_engine PRIVATE BLACKLIGHT_BUILD_SHARED)
 target_compile_definitions(blacklight_engine_static PUBLIC BLACKLIGHT_STATIC)
 
 if(MSVC)
-	target_compile_options(blacklight_engine PRIVATE /W4 /permissive-)
-	target_compile_options(blacklight_engine_static PRIVATE /W4 /permissive-)
+	target_compile_options(blacklight_engine PRIVATE /W4 /EHsc /permissive-)
+	target_compile_options(blacklight_engine_static PRIVATE /W4 /EHsc /permissive-)
 else()
 	target_compile_options(blacklight_engine PRIVATE -Wall -Wextra -Wpedantic)
 	target_compile_options(blacklight_engine_static PRIVATE -Wall -Wextra -Wpedantic)

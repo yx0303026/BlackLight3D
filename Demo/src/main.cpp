@@ -1,4 +1,9 @@
 #include "rmlui/UIXmlParser.h"
+#include "engine/IGraphicsBackend.h"
+#include "engine/backends/WindowsOpenGLBackend.h"
+#include "rmlui/RmlUiTree.h"
+
+#include <RmlUi/Core.h>
 
 #include <iostream>
 #include <fstream>
@@ -6,6 +11,7 @@
 #include <memory>
 
 using namespace BlackLight::UI;
+using namespace BlackLight::Engine;
 
 /// Loads XML content from a file.
 std::string LoadXmlFile(const char* filepath) {
@@ -19,107 +25,79 @@ std::string LoadXmlFile(const char* filepath) {
 	return buffer.str();
 }
 
-/// Prints the UI element tree to console.
-void PrintUITree(const UIElement* element, int indent = 0) {
-	std::string prefix(indent * 2, ' ');
-	
-	if (element->GetKind() == UIElementKind::Screen) {
-		std::cout << prefix << "[Screen]";
-	} else if (element->GetKind() == UIElementKind::Panel) {
-		std::cout << prefix << "[Panel]";
-	} else if (element->GetKind() == UIElementKind::Text) {
-		std::cout << prefix << "[Text]";
-	}
-	
-	if (!element->GetId().empty()) {
-		std::cout << " id=\"" << element->GetId() << "\"";
-	}
-	
-	if (element->GetKind() == UIElementKind::Text) {
-		const auto* text_elem = dynamic_cast<const UIText*>(element);
-		if (text_elem) {
-			std::cout << " content=\"" << text_elem->GetText() << "\"";
-		}
-	}
-	
-	if (element->GetKind() != UIElementKind::Text) {
-		const auto* container = dynamic_cast<const UIContainer*>(element);
-		if (container) {
-			const auto& layout = container->GetLayout();
-			if (layout.auto_size) {
-				std::cout << " auto_size=true";
-			}
-			if (layout.width.has_value()) {
-				std::cout << " width=" << layout.width.value();
-			}
-			if (layout.height.has_value()) {
-				std::cout << " height=" << layout.height.value();
-			}
-		}
-	}
-	
-	std::cout << std::endl;
-	
-	if (element->GetKind() != UIElementKind::Text) {
-		const auto* container = dynamic_cast<const UIContainer*>(element);
-		if (container) {
-			for (const auto& child : container->GetChildren()) {
-				PrintUITree(child.get(), indent + 1);
-			}
-		}
-	}
-}
-
-/// Validates and prints the parsed UI tree or error information.
-void PrintParseResult(const UIParseError& error, const std::unique_ptr<UIScreen>& screen) {
-	if (!error.message.empty()) {
-		std::cerr << "Parse Error at line " << error.line << ": " << error.message << std::endl;
-		return;
-	}
-	
-	if (!screen) {
-		std::cerr << "Error: No screen was created." << std::endl;
-		return;
-	}
-	
-	std::cout << "\n=== UI Tree Structure ===" << std::endl;
-	PrintUITree(screen.get());
-	std::cout << "========================\n" << std::endl;
-}
-
 int main(int argc, char* argv[]) {
-	std::cout << "BlackLight3D UI Demo - XML Parser Test\n" << std::endl;
-	
-	// Determine XML file path
+	std::cout << "BlackLight3D - UI Rendering Demo\n" << std::endl;
+
+	// Initialize graphics backend
+	std::unique_ptr<IGraphicsBackend> backend = CreateGraphicsBackend("windows-opengl");
+	if (!backend) {
+		std::cerr << "Error: Failed to create graphics backend" << std::endl;
+		return 1;
+	}
+
+	GraphicsWindow window_config;
+	window_config.width = 1280;
+	window_config.height = 720;
+	window_config.title = "BlackLight3D UI Demo";
+
+	GraphicsResult result = backend->Initialize(window_config);
+	if (result != GraphicsResult::Success) {
+		std::cerr << "Error: Failed to initialize graphics backend" << std::endl;
+		return 1;
+	}
+
+	Rml::Context* rml_context = backend->GetContext();
+	if (!rml_context) {
+		std::cerr << "Error: Failed to get RmlUi context" << std::endl;
+		return 1;
+	}
+
+	// Load and parse XML
 	std::string xml_file = "UI\\Main.xml";
 	if (argc > 1) {
 		xml_file = argv[1];
 	}
-	
-	// Load XML file
+
+	std::cout << "Loading UI from: " << xml_file << std::endl;
 	std::string xml_content = LoadXmlFile(xml_file.c_str());
 	if (xml_content.empty()) {
+		backend->Shutdown();
 		return 1;
 	}
-	
-	// Parse XML
+
+	// Parse UI
 	std::unique_ptr<UIScreen> screen;
-	UIParseError error;
-	
-	std::cout << "Parsing XML from: " << xml_file << std::endl;
-	std::cout << "---" << std::endl;
-	
-	bool success = UIXmlParser::Parse(xml_content, screen, error);
-	
-	PrintParseResult(error, screen);
-	
-	if (success && screen) {
-		std::cout << "? Parse successful!" << std::endl;
-		std::cout << "Screen ID: " << (screen->GetId().empty() ? "(none)" : screen->GetId()) << std::endl;
-		std::cout << "Children count: " << screen->GetChildren().size() << std::endl;
-		return 0;
-	} else {
-		std::cout << "? Parse failed!" << std::endl;
+	UIParseError parse_error;
+
+	if (!UIXmlParser::Parse(xml_content, screen, parse_error)) {
+		std::cerr << "Parse Error at line " << parse_error.line << ": " << parse_error.message << std::endl;
+		backend->Shutdown();
 		return 1;
 	}
+
+	// Build RmlUi tree
+	std::unique_ptr<RmlUiTree> ui_tree;
+	UIBuildError build_error;
+
+	if (!RmlUiTree::Build(*rml_context, *screen, ui_tree, build_error)) {
+		std::cerr << "Build Error: " << build_error.message << std::endl;
+		backend->Shutdown();
+		return 1;
+	}
+
+	ui_tree->Show();
+	std::cout << "UI loaded successfully. Starting render loop...\n" << std::endl;
+
+	// Render loop
+	while (backend->Update() && !backend->ShouldClose()) {
+		backend->Render();
+		backend->Present();
+	}
+
+	std::cout << "\nShutting down..." << std::endl;
+	ui_tree.reset();
+	backend->Shutdown();
+
+	std::cout << "Demo completed successfully" << std::endl;
+	return 0;
 }

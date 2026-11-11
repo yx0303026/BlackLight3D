@@ -8,6 +8,7 @@ set_target_properties(blacklight_demo PROPERTIES
 
 target_link_libraries(blacklight_demo
 	PRIVATE BlackLight::RmlUi
+	PRIVATE opengl32
 )
 
 target_include_directories(blacklight_demo
