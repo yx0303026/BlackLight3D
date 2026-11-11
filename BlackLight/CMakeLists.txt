@@ -130,12 +130,17 @@ if(BLACKLIGHT_BUILD_TESTS)
 	target_link_libraries(blacklight_rmlui_tests PRIVATE BlackLight::EngineStatic)
 	add_test(NAME blacklight_rmlui_tests COMMAND blacklight_rmlui_tests)
 
+	add_executable(blacklight_htmlcss_tests tests/HtmlCssParserTests.cpp)
+	target_link_libraries(blacklight_htmlcss_tests PRIVATE BlackLight::EngineStatic)
+	add_test(NAME blacklight_htmlcss_tests COMMAND blacklight_htmlcss_tests)
+
 	add_executable(blacklight_engine_tests tests/LoggerTests.cpp)
 	target_link_libraries(blacklight_engine_tests PRIVATE BlackLight::EngineStatic)
 	add_test(NAME blacklight_engine_tests COMMAND blacklight_engine_tests)
 
 	if(MSVC)
 		target_compile_options(blacklight_rmlui_tests PRIVATE /EHsc)
+		target_compile_options(blacklight_htmlcss_tests PRIVATE /EHsc)
 		target_compile_options(blacklight_engine_tests PRIVATE /EHsc)
 	endif()
 endif()

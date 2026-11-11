@@ -1,6 +1,6 @@
 # BlackLight3D
 
-BlackLight Engine is a C++17 engine SDK backed by RmlUi. Each build produces a shared engine DLL, a static library variant, and a distributable ZIP package containing the libraries and public headers. The public API lives in `BlackLight/include/rmlui`; XML parsing and RmlUi integration are implemented under `BlackLight/src/rmlui`.
+BlackLight Engine is a C++17 engine SDK backed by RmlUi. Each build produces a shared engine DLL, a static library variant, and a distributable ZIP package containing the libraries and public headers. The public API lives in `BlackLight/include/rmlui`; HTML parsing and RmlUi integration are implemented under `BlackLight/src/rmlui`.
 
 ## Build
 
@@ -33,46 +33,40 @@ The implementation notes and the current RmlUi backend boundary are documented i
 
 To require locally installed packages, configure with `-DBLACKLIGHT_FETCH_DEPENDENCIES=OFF`. Disable tests with `-DBLACKLIGHT_BUILD_TESTS=OFF`.
 
-## XML
+## HTML
 
-`Screen` is the required UI root. It may be wrapped by `<layout>` to declare named inline stylesheets. Controls include `Panel`, `Fill`, `Border`, `Button`, `ListBox`, `ListView`, and `DataGrid`; non-whitespace text between container elements becomes a text node. `c:id` is preferred; plain `id` is also accepted, but the two cannot be used on the same element. IDs are optional, unique within a screen, and cannot contain whitespace. A control's `style` attribute references a stylesheet by ID (`style="xx"`) and optionally a CSS class (`style="xx:panel-class"`).
+`HtmlCssParser` turns standard HTML and CSS into a `HTMLDocument` tree, which
+`RmlUiTree` converts into a native RmlUi document. Element `id` attributes become
+unique identifiers, `class` attributes are split on whitespace, and `style`
+attributes are normalized to RmlUi-compatible values such as `width: 320px`.
+Inline `background` is mapped to `background-color`.
 
-```xml
-<layout xmlns:c="urn:blacklight:ui">
-  <style c:id="xx">
-.panel-class { background-color: #263746; padding: 12px; }
-  </style>
-  <Screen c:id="screen_id" style="xx:panel-class">
-    <Panel c:id="panel_id" auto_size="true" width="320" style="xx">
-      Panel content
-      <Button c:id="confirm" auto_size="true">Confirm</Button>
-      <Panel c:id="nested_panel" height="50%" />
-    </Panel>
-  </Screen>
-</layout>
+```html
+<div id="app" style="display: flex; flex-direction: column; padding: 12px;">
+  <button id="confirm" style="width: 120px;">Confirm</button>
+</div>
 ```
-
-`auto_size` applies to containers and defaults to `false`. For each axis, an explicit `width` or `height` wins. An unspecified axis becomes content-sized when `auto_size="true"`, or fills the parent when `auto_size="false"`. Bare non-negative numbers are interpreted as pixels; supported dimensions are `px`, `%`, `dp`, `em`, and `auto`. Panels lay out children vertically.
-
-The UI tree injects a base stylesheet for built-in controls. Custom named styles are compiled into the RmlUi document and may override the defaults.
 
 ## Runtime
 
-The host application initializes RmlUi and its renderer/font interfaces, then parses and builds the screen using its existing `Rml::Context`:
+The host application initializes RmlUi and its renderer/font interfaces, then parses
+and builds the document using its existing `Rml::Context`:
 
 ```cpp
-std::unique_ptr<BlackLight::UI::UIScreen> screen;
-BlackLight::UI::UIParseError parse_error;
-if (!BlackLight::UI::UIXmlParser::Parse(xml, screen, parse_error)) {
+std::unique_ptr<BlackLight::UI::HTMLDocument> document;
+BlackLight::UI::HTMLParseError parse_error;
+if (!BlackLight::UI::HtmlCssParser::Parse(html, css, document, parse_error)) {
     // Handle parse_error.message and parse_error.line.
 }
 
 std::unique_ptr<BlackLight::UI::RmlUiTree> ui;
 BlackLight::UI::UIBuildError build_error;
-if (!BlackLight::UI::RmlUiTree::Build(context, *screen, ui, build_error)) {
+if (!BlackLight::UI::RmlUiTree::Build(context, *document, ui, build_error)) {
     // Handle build_error.message.
 }
 ui->Show();
 ```
 
-The tree owns its RmlUi document but not the context. Close or destroy every `RmlUiTree` before shutting down its context. `FindById` resolves the source `c:id` to its native RmlUi element.
+The tree owns its RmlUi document but not the context. Close or destroy every `RmlUiTree`
+before shutting down its context. `HTMLContainer::FindById` resolves an element `id` in
+the parsed tree, and `RmlUiTree::FindById` resolves it to its native RmlUi element.

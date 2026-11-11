@@ -43,13 +43,12 @@ std::string html = R"(
 )";
 
 // Parse the HTML
-std::unique_ptr<BlackLight::UI::UIScreen> screen;
+std::unique_ptr<BlackLight::UI::HTMLDocument> document;
 BlackLight::UI::HTMLParseError error;
 
-if (BlackLight::UI::HtmlCssParser::Parse(html, "", screen, error)) {
-    // Successfully parsed!
-    // Use the screen in your UI rendering
-    RenderScreen(screen.get());
+if (BlackLight::UI::HtmlCssParser::Parse(html, "", document, error)) {
+    // Successfully parsed! Build the native tree from the document.
+    BuildNativeTree(document.get());
 } else {
     // Handle error
     std::cerr << "Parse error: " << error.message << " at line " << error.line << std::endl;
@@ -120,10 +119,10 @@ std::string html = R"(
 )";
 
 // Parse with external CSS
-std::unique_ptr<BlackLight::UI::UIScreen> screen;
+std::unique_ptr<BlackLight::UI::HTMLDocument> document;
 BlackLight::UI::HTMLParseError error;
 
-if (BlackLight::UI::HtmlCssParser::Parse(html, css, screen, error)) {
+if (BlackLight::UI::HtmlCssParser::Parse(html, css, document, error)) {
     // Successfully parsed with CSS applied!
 } else {
     std::cerr << "Parse error: " << error.message << std::endl;
@@ -165,10 +164,10 @@ std::string html = R"(
     </div>
 )";
 
-std::unique_ptr<BlackLight::UI::UIScreen> screen;
+std::unique_ptr<BlackLight::UI::HTMLDocument> document;
 BlackLight::UI::HTMLParseError error;
 
-if (BlackLight::UI::HtmlCssParser::Parse(html, "", screen, error)) {
+if (BlackLight::UI::HtmlCssParser::Parse(html, "", document, error)) {
     // Flexbox layout parsed successfully
 }
 ```
@@ -295,23 +294,25 @@ css_buffer << css_file.rdbuf();
 std::string css = css_buffer.str();
 
 // Parse
-std::unique_ptr<BlackLight::UI::UIScreen> screen;
+std::unique_ptr<BlackLight::UI::HTMLDocument> document;
 BlackLight::UI::HTMLParseError error;
-BlackLight::UI::HtmlCssParser::Parse(html, css, screen, error);
+BlackLight::UI::HtmlCssParser::Parse(html, css, document, error);
 ```
 
 ### Dynamic Style Application
 
 ```cpp
 // Parse base HTML
-std::unique_ptr<BlackLight::UI::UIScreen> screen;
-BlackLight::UI::HtmlCssParser::Parse(html, "", screen, error);
+std::unique_ptr<BlackLight::UI::HTMLDocument> document;
+BlackLight::UI::HtmlCssParser::Parse(html, "", document, error);
 
-// Access element styles
-if (auto* element = screen->GetElementById("my_element")) {
-    // Element found, can access its properties
-    auto layout = element->GetLayout();
-    // Modify as needed...
+// Access element attributes
+if (auto* element = document->FindById("my_element")) {
+    // Inline styles are normalized to RmlUi-compatible values
+    const std::string& style = element->GetStyle();
+    const std::string& tag = element->GetTagName();
+    (void)style;
+    (void)tag;
 }
 ```
 
@@ -389,18 +390,18 @@ See [Demo/UI/example.html](../Demo/UI/example.html) for complete working example
 
 ```cpp
 static bool Parse(
-    const std::string& html,
-    const std::string& css,
-    std::unique_ptr<UIScreen>& out_screen,
-    HTMLParseError& out_error
+    std::string_view html,
+    std::string_view css,
+    std::unique_ptr<HTMLDocument>& document,
+    HTMLParseError& error
 );
 ```
 
 **Parameters:**
 - `html`: HTML content as string
 - `css`: CSS stylesheet as string (can be empty)
-- `out_screen`: Output UIScreen object
-- `out_error`: Error details if parsing fails
+- `document`: Output `HTMLDocument` tree; left untouched when parsing fails
+- `error`: Error details if parsing fails
 
 **Returns:** `true` if parsing succeeded, `false` otherwise
 
@@ -409,9 +410,7 @@ static bool Parse(
 ```cpp
 struct HTMLParseError {
     std::string message;  // Human-readable error message
-    int line;            // Line number where error occurred
-    int column;          // Column number where error occurred
-    std::string context; // Surrounding code context
+    std::size_t line;     // One-based line number, or zero when unavailable
 };
 ```
 

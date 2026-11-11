@@ -373,11 +373,11 @@ std::string html = R"(
     </div>
 )";
 
-std::unique_ptr<UIScreen> screen;
+std::unique_ptr<HTMLDocument> document;
 HTMLParseError error;
 
-if (HtmlCssParser::Parse(html, "", screen, error)) {
-    // 使用screen...
+if (HtmlCssParser::Parse(html, "", document, error)) {
+    // 使用 document 构建 RmlUi 树...
 }
 ```
 

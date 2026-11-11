@@ -1,6 +1,7 @@
 ﻿#include "rmlui/RmlUiTree.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -66,7 +67,7 @@ void ApplyIdentifier(Rml::Element& native_element, const HTMLElement& element) {
 
 void ApplyClasses(Rml::Element& native_element, const HTMLElement& element) {
 	for (const auto& css_class : element.GetClasses()) {
-		native_element.AddClass(css_class);
+		native_element.SetClass(css_class, true);
 	}
 }
 
@@ -156,19 +157,23 @@ bool RmlUiTree::Build(Rml::Context& context, const HTMLDocument& document,
 		return false;
 	}
 
-	auto default_stylesheet = Rml::StyleSheetContainer::GetStyleSheet(
-		Rml::StreamMemory(DEFAULT_STYLE_SHEET, std::strlen(DEFAULT_STYLE_SHEET))
+	auto default_stylesheet_container = std::make_shared<Rml::StyleSheetContainer>();
+	Rml::StreamMemory default_stream(
+		reinterpret_cast<const Rml::byte*>(DEFAULT_STYLE_SHEET),
+		std::strlen(DEFAULT_STYLE_SHEET)
 	);
-	if (default_stylesheet) {
-		new_tree->document_->AddStyleSheet(default_stylesheet);
+	if (default_stylesheet_container->LoadStyleSheetContainer(&default_stream)) {
+		new_tree->document_->SetStyleSheetContainer(default_stylesheet_container);
 	}
 
 	for (const auto& css : document.GetStyleSheets()) {
-		auto stylesheet = Rml::StyleSheetContainer::GetStyleSheet(
-			Rml::StreamMemory(css.c_str(), css.size())
+		auto stylesheet_container = std::make_shared<Rml::StyleSheetContainer>();
+		Rml::StreamMemory stream(
+			reinterpret_cast<const Rml::byte*>(css.c_str()),
+			css.size()
 		);
-		if (stylesheet) {
-			new_tree->document_->AddStyleSheet(stylesheet);
+		if (stylesheet_container->LoadStyleSheetContainer(&stream)) {
+			new_tree->document_->SetStyleSheetContainer(stylesheet_container);
 		}
 	}
 

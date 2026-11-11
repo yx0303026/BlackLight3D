@@ -59,7 +59,7 @@ BlackLight3D now provides full HTML+CSS parsing support through the new `HtmlCss
 #include "rmlui/HtmlCssParser.h"
 
 // Parse HTML with optional CSS
-std::unique_ptr<UIScreen> screen;
+std::unique_ptr<HTMLDocument> document;
 HTMLParseError error;
 
 std::string html = R"(
@@ -68,27 +68,28 @@ std::string html = R"(
     </div>
 )";
 
-bool success = HtmlCssParser::Parse(html, "", screen, error);
+bool success = HtmlCssParser::Parse(html, "", document, error);
 
 if (!success) {
     std::cerr << "Parse error: " << error.message << " at line " << error.line << std::endl;
 } else {
-    // Use the screen with RmlUi
-    RmlUiTree tree;
-    // ... build tree ...
+    // Build the native tree from the parsed document
+    std::unique_ptr<RmlUiTree> tree;
+    UIBuildError build_error;
+    success = RmlUiTree::Build(context, *document, tree, build_error);
 }
 ```
 
 ### Parsing from Files
 
 ```cpp
-std::unique_ptr<UIScreen> screen;
+std::unique_ptr<HTMLDocument> document;
 HTMLParseError error;
 
 bool success = HtmlCssParser::ParseFromFiles(
     "ui/layout.html",
     "ui/styles.css",
-    screen,
+    document,
     error
 );
 ```
@@ -292,26 +293,33 @@ if (!HtmlCssParser::Parse(html, css, screen, error)) {
 - **CSS Parsing**: External CSS is stored as-is; complex selectors should be minimized
 - **Nested Elements**: Deep nesting (>20 levels) may impact rendering performance
 
-## Integration with Existing XML Parser
+## Building the Native Tree
 
-The HTML+CSS parser works alongside the existing XML parser:
+`HtmlCssParser` produces a `HTMLDocument` tree. `RmlUiTree` converts that tree into
+native RmlUi elements, so parsing and rendering stay separate:
 
 ```cpp
-// For XML-based layouts (existing)
-bool xml_success = UIXmlParser::Parse(xml_content, screen, xml_error);
+std::unique_ptr<HTMLDocument> document;
+HTMLParseError parse_error;
+if (!HtmlCssParser::Parse(html_content, css_content, document, parse_error)) {
+    // Handle parse_error.message and parse_error.line.
+}
 
-// For HTML+CSS layouts (new)
-bool html_success = HtmlCssParser::Parse(html_content, css_content, screen, html_error);
+std::unique_ptr<RmlUiTree> tree;
+UIBuildError build_error;
+if (!RmlUiTree::Build(context, *document, tree, build_error)) {
+    // Handle build_error.message.
+}
+tree->Show();
 ```
 
 ## Contributing Custom Elements
 
 To add support for custom HTML elements:
 
-1. Add to `ELEMENT_KIND_MAP` in HtmlCssParser.cpp
-2. Update `GetElementKind()` function
-3. Map to appropriate `UIElementKind`
-4. Update corresponding `ParseHTMLElement()` logic
+1. Add a kind to `HTMLElementKind` in `rmlui/HTMLElement.h`
+2. Map the tag in `GetKindForTag()` in `HTMLParser.cpp`
+3. Add the native RmlUi mapping in `BuildElement()` in `RmlUiTree.cpp`
 
 ## Future Enhancements
 

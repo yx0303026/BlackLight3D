@@ -29,8 +29,8 @@ public:
 	static bool Parse(std::string_view html, std::string_view css,
 		std::unique_ptr<HTMLDocument>& document, HTMLParseError& error);
 
-	/// Parses HTML and CSS from external HtmlCssParser result.
-	/// This integrates with the existing HtmlCssParser for full HTML+CSS support.
+	/// Parses HTML and CSS, keeping the parse result out of document unless parsing succeeds.
+	/// HtmlCssParser builds on this entry point and adds identifier validation and file loading.
 	///
 	/// @param html The HTML content to parse
 	/// @param css Optional CSS stylesheet to apply

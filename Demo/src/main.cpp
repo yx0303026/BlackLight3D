@@ -89,12 +89,12 @@ int main(int argc, char* argv[]) {
 	}
 
 	// Parse UI with HTML+CSS Parser
-	std::unique_ptr<UIScreen> screen;
+	std::unique_ptr<HTMLDocument> document;
 	HTMLParseError parse_error;
 
-	if (!HtmlCssParser::Parse(html_content, "", screen, parse_error)) {
-		std::cerr << "Parse Error at line " << parse_error.line 
-			<< " column " << parse_error.column << ": " << parse_error.message << std::endl;
+	if (!HtmlCssParser::Parse(html_content, "", document, parse_error)) {
+		std::cerr << "Parse Error at line " << parse_error.line
+			<< ": " << parse_error.message << std::endl;
 		backend->Shutdown();
 		WaitForAnyKey();
 		return 1;
@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
 	std::unique_ptr<RmlUiTree> ui_tree;
 	UIBuildError build_error;
 
-	if (!RmlUiTree::Build(*rml_context, *screen, ui_tree, build_error)) {
+	if (!RmlUiTree::Build(*rml_context, *document, ui_tree, build_error)) {
 		std::cerr << "Build Error: " << build_error.message << std::endl;
 		backend->Shutdown();
 		WaitForAnyKey();

@@ -1,109 +1,134 @@
-﻿#include "rmlui/HTMLElement.h"
+#include "rmlui/HTMLElement.h"
 
 #include <algorithm>
-#include <cassert>
+#include <utility>
 
 namespace BlackLight::UI {
 
-HTMLElement::HTMLElement(const std::string& tag, HTMLElementKind kind)
-	: tag_name_(tag), kind_(kind), parent_(nullptr) {}
+namespace {
+
+HTMLElementAttributes MakeTextAttributes()
+{
+	HTMLElementAttributes attributes;
+	attributes.tag_name = "#text";
+	return attributes;
+}
+
+HTMLElementAttributes MakeDocumentAttributes(const HTMLElementAttributes& attributes)
+{
+	HTMLElementAttributes document_attributes = attributes;
+	if (document_attributes.tag_name.empty()) {
+		document_attributes.tag_name = "html";
+	}
+	return document_attributes;
+}
+
+bool HasClass(const HTMLElement& element, const std::string& class_name)
+{
+	const auto& classes = element.GetClasses();
+	return std::find(classes.begin(), classes.end(), class_name) != classes.end();
+}
+
+void CollectByClass(HTMLContainer& container, const std::string& class_name, std::vector<HTMLElement*>& results)
+{
+	for (const auto& child : container.GetChildren()) {
+		if (HasClass(*child, class_name)) {
+			results.push_back(child.get());
+		}
+		if (auto* nested = dynamic_cast<HTMLContainer*>(child.get())) {
+			CollectByClass(*nested, class_name, results);
+		}
+	}
+}
+
+} // namespace
+
+HTMLElement::HTMLElement(HTMLElementKind kind, const HTMLElementAttributes& attributes)
+	: kind_(kind), attributes_(attributes)
+{
+}
 
 HTMLElement::~HTMLElement() = default;
 
-const std::string& HTMLElement::GetTagName() const {
-	return tag_name_;
-}
-
-HTMLElementKind HTMLElement::GetKind() const {
+HTMLElementKind HTMLElement::GetKind() const noexcept
+{
 	return kind_;
 }
 
-const std::string& HTMLElement::GetId() const {
-	return id_;
+const std::string& HTMLElement::GetId() const noexcept
+{
+	return attributes_.id;
 }
 
-void HTMLElement::SetId(const std::string& id) {
-	id_ = id;
+const std::vector<std::string>& HTMLElement::GetClasses() const noexcept
+{
+	return attributes_.classes;
 }
 
-const std::vector<std::string>& HTMLElement::GetClasses() const {
-	return classes_;
+const std::string& HTMLElement::GetStyle() const noexcept
+{
+	return attributes_.style;
 }
 
-void HTMLElement::AddClass(const std::string& css_class) {
-	if (!css_class.empty()) {
-		classes_.push_back(css_class);
-	}
+const std::string& HTMLElement::GetTagName() const noexcept
+{
+	return attributes_.tag_name;
 }
 
-bool HTMLElement::HasClass(const std::string& css_class) const {
-	return std::find(classes_.begin(), classes_.end(), css_class) != classes_.end();
-}
-
-const std::string& HTMLElement::GetStyle() const {
-	return style_;
-}
-
-void HTMLElement::SetStyle(const std::string& style) {
-	style_ = style;
-}
-
-HTMLElement* HTMLElement::GetParent() const {
+HTMLContainer* HTMLElement::GetParent() noexcept
+{
 	return parent_;
 }
 
-void HTMLElement::SetParent(HTMLElement* parent) {
-	parent_ = parent;
+const HTMLContainer* HTMLElement::GetParent() const noexcept
+{
+	return parent_;
 }
 
-HTMLText::HTMLText(const std::string& text)
-	: HTMLElement("#text", HTMLElementKind::Text), text_(text) {}
-
-HTMLText::~HTMLText() = default;
-
-const std::string& HTMLText::GetText() const {
-	return text_;
+const HTMLElementAttributes& HTMLElement::GetAttributes() const noexcept
+{
+	return attributes_;
 }
 
-void HTMLText::SetText(const std::string& text) {
-	text_ = text;
+std::string HTMLElement::GetAttribute(const std::string& name) const
+{
+	const auto attribute = attributes_.custom_attributes.find(name);
+	if (attribute == attributes_.custom_attributes.end()) {
+		return {};
+	}
+	return attribute->second;
 }
 
-HTMLContainer::HTMLContainer(const std::string& tag, HTMLElementKind kind)
-	: HTMLElement(tag, kind) {}
+HTMLContainer::HTMLContainer(HTMLElementKind kind, const HTMLElementAttributes& attributes)
+	: HTMLElement(kind, attributes)
+{
+}
 
 HTMLContainer::~HTMLContainer() = default;
 
-const std::vector<std::unique_ptr<HTMLElement>>& HTMLContainer::GetChildren() const {
+const std::vector<std::unique_ptr<HTMLElement>>& HTMLContainer::GetChildren() const noexcept
+{
 	return children_;
 }
 
-void HTMLContainer::AddChild(std::unique_ptr<HTMLElement> child) {
-	if (child) {
-		child->SetParent(this);
-		children_.push_back(std::move(child));
+bool HTMLContainer::AddChild(std::unique_ptr<HTMLElement> child)
+{
+	if (!child || child->parent_ != nullptr) {
+		return false;
 	}
+	child->parent_ = this;
+	children_.push_back(std::move(child));
+	return true;
 }
 
-bool HTMLContainer::RemoveChild(HTMLElement* child) {
-	auto it = std::find_if(children_.begin(), children_.end(),
-		[child](const auto& ptr) { return ptr.get() == child; });
-	
-	if (it != children_.end()) {
-		child->SetParent(nullptr);
-		children_.erase(it);
-		return true;
-	}
-	return false;
-}
-
-HTMLElement* HTMLContainer::FindChildById(const std::string& id) const {
+HTMLElement* HTMLContainer::FindById(const std::string& id)
+{
 	for (const auto& child : children_) {
 		if (child->GetId() == id) {
 			return child.get();
 		}
 		if (auto* container = dynamic_cast<HTMLContainer*>(child.get())) {
-			if (auto* found = container->FindChildById(id)) {
+			if (HTMLElement* found = container->FindById(id)) {
 				return found;
 			}
 		}
@@ -111,73 +136,63 @@ HTMLElement* HTMLContainer::FindChildById(const std::string& id) const {
 	return nullptr;
 }
 
-std::vector<HTMLElement*> HTMLContainer::FindChildrenByClass(const std::string& css_class) const {
+std::vector<HTMLElement*> HTMLContainer::FindByClass(const std::string& class_name)
+{
 	std::vector<HTMLElement*> results;
-	FindByClassRecursive(css_class, results);
+	CollectByClass(*this, class_name, results);
 	return results;
 }
 
-void HTMLContainer::FindByClassRecursive(
-	const std::string& css_class,
-	std::vector<HTMLElement*>& results) const
+HTMLDocument::HTMLDocument(const HTMLElementAttributes& attributes)
+	: HTMLContainer(HTMLElementKind::Document, MakeDocumentAttributes(attributes))
 {
-	for (const auto& child : children_) {
-		if (child->HasClass(css_class)) {
-			results.push_back(child.get());
-		}
-		if (auto* container = dynamic_cast<HTMLContainer*>(child.get())) {
-			container->FindByClassRecursive(css_class, results);
-		}
-	}
 }
 
-std::size_t HTMLContainer::GetChildCount() const {
-	return children_.size();
-}
-
-HTMLElement* HTMLContainer::GetChildAt(std::size_t index) const {
-	if (index < children_.size()) {
-		return children_[index].get();
-	}
-	return nullptr;
-}
-
-void HTMLContainer::Clear() {
-	for (auto& child : children_) {
-		child->SetParent(nullptr);
-	}
-	children_.clear();
-}
-
-HTMLDocument::HTMLDocument()
-	: HTMLContainer("", HTMLElementKind::Document) {}
-
-HTMLDocument::~HTMLDocument() = default;
-
-HTMLElement* HTMLDocument::FindById(const std::string& id) const {
-	return FindChildById(id);
-}
-
-std::vector<HTMLElement*> HTMLDocument::FindByClass(const std::string& css_class) const {
-	return FindChildrenByClass(css_class);
-}
-
-const std::vector<std::string>& HTMLDocument::GetStyleSheets() const {
-	return stylesheets_;
-}
-
-void HTMLDocument::AddStyleSheet(const std::string& css) {
+void HTMLDocument::AddStyleSheet(std::string css)
+{
 	if (!css.empty()) {
-		stylesheets_.push_back(css);
+		style_sheets_.push_back(std::move(css));
 	}
 }
 
-void HTMLDocument::ClearStyleSheets() {
-	stylesheets_.clear();
+const std::vector<std::string>& HTMLDocument::GetStyleSheets() const noexcept
+{
+	return style_sheets_;
 }
 
-std::size_t HTMLDocument::GetStyleSheetCount() const {
-	return stylesheets_.size();
+void HTMLDocument::SetCharset(std::string charset)
+{
+	charset_ = std::move(charset);
 }
 
+const std::string& HTMLDocument::GetCharset() const noexcept
+{
+	return charset_;
 }
+
+void HTMLDocument::SetLanguage(std::string language)
+{
+	language_ = std::move(language);
+}
+
+const std::string& HTMLDocument::GetLanguage() const noexcept
+{
+	return language_;
+}
+
+HTMLText::HTMLText(std::string text)
+	: HTMLElement(HTMLElementKind::Text, MakeTextAttributes()), text_(std::move(text))
+{
+}
+
+const std::string& HTMLText::GetText() const noexcept
+{
+	return text_;
+}
+
+void HTMLText::SetText(std::string text)
+{
+	text_ = std::move(text);
+}
+
+} // namespace BlackLight::UI
