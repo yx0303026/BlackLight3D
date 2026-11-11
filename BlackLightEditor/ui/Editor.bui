@@ -493,11 +493,14 @@
 
     .accent-button {
       display: block;
-      padding: 7dp 14dp;
+      height: 32dp;
+      padding: 0 14dp;
       background-color: @accent;
       color: #ffffff;
       border-radius: 4dp;
       cursor: pointer;
+      line-height: 32dp;
+      box-sizing: border-box;
     }
 
     .accent-button:hover {
@@ -510,12 +513,15 @@
 
     .ghost-button {
       display: block;
-      padding: 7dp 14dp;
+      height: 32dp;
+      padding: 0 14dp;
       background-color: @surface-alt;
       color: @text;
       border: 1dp @border-strong;
       border-radius: 4dp;
       cursor: pointer;
+      line-height: 32dp;
+      box-sizing: border-box;
     }
 
     .ghost-button:hover {
@@ -565,56 +571,86 @@
       width: 100%;
       height: 100%;
       z-index: 500;
-      display: block;
-      background-color: rgba(0, 0, 0, 170);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background-color: rgba(0, 0, 0, 180);
     }
 
     .wizard-dialog {
       display: block;
-      width: 640dp;
-      margin-left: auto;
-      margin-right: auto;
-      margin-top: 40dp;
-      padding: 16dp;
+      width: 700dp;
+      max-height: 88%;
       background-color: @elevated;
       border: 1dp @border-strong;
+      border-radius: 6dp;
+      font-family: "Segoe UI";
+    }
+
+    .wizard-header {
+      display: block;
+      padding: 16dp 20dp 12dp 20dp;
+      background-color: @surface-alt;
+      border-bottom: 1dp @border;
+      border-top-left-radius: 6dp;
+      border-top-right-radius: 6dp;
     }
 
     .wizard-title {
       display: block;
-      font-size: 18dp;
+      font-size: 19dp;
       font-weight: bold;
       color: @text;
     }
 
     .wizard-subtitle {
       display: block;
-      margin-top: 2dp;
+      margin-top: 3dp;
       color: @text-muted;
+      font-size: 11dp;
+    }
+
+    .wizard-body {
+      display: block;
+      padding: 0 20dp;
+      overflow-y: auto;
+    }
+
+    .wizard-footer {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 8dp;
+      padding: 12dp 20dp 18dp 20dp;
     }
 
     .wizard-section {
       display: block;
-      margin-top: 10dp;
-      padding-bottom: 3dp;
+      margin-top: 14dp;
+      padding-bottom: 4dp;
       color: @accent;
-      font-size: 11dp;
+      font-size: 10dp;
+      font-weight: bold;
+      letter-spacing: 1dp;
+      text-transform: uppercase;
       border-bottom: 1dp @border;
     }
 
     .wizard-options {
       display: flex;
       flex-direction: row;
-      margin-top: 6dp;
+      gap: 8dp;
+      margin-top: 8dp;
     }
 
     .wizard-option {
       display: block;
-      width: 200dp;
-      padding: 8dp;
-      margin-right: 8dp;
+      width: 214dp;
+      padding: 10dp;
       background-color: @surface-alt;
       border: 1dp @border;
+      border-radius: 4dp;
       cursor: pointer;
     }
 
@@ -635,7 +671,7 @@
 
     .wizard-option-desc {
       display: block;
-      margin-top: 2dp;
+      margin-top: 3dp;
       color: @text-muted;
       font-size: 11dp;
     }
@@ -643,17 +679,18 @@
     .wizard-row {
       display: flex;
       flex-direction: row;
-      margin-top: 6dp;
+      align-items: center;
+      gap: 8dp;
     }
 
     .wizard-field {
       display: block;
-      margin-top: 6dp;
+      margin-top: 8dp;
     }
 
     .wizard-field-half {
       display: block;
-      width: 299dp;
+      width: 326dp;
     }
 
     .wizard-field-second {
@@ -662,6 +699,7 @@
 
     .wizard-label {
       display: block;
+      margin-bottom: 3dp;
       color: @text-muted;
       font-size: 11dp;
     }
@@ -669,49 +707,96 @@
     .wizard-input {
       display: block;
       box-sizing: border-box;
-      width: 606dp;
-      height: 24dp;
-      padding: 2dp 6dp;
-      background-color: @surface-alt;
+      width: 660dp;
+      height: 32dp;
+      padding: 6dp 8dp;
+      background-color: @bg;
       border: 1dp @border-strong;
+      border-radius: 4dp;
       color: @text;
-      font-family: Arial;
+      font-family: "Segoe UI";
       font-size: 12dp;
+      line-height: 18dp;
+    }
+
+    .wizard-input:focus {
+      border: 1dp @accent;
     }
 
     .wizard-input-half {
-      width: 299dp;
+      width: 326dp;
+      height: 32dp;
     }
 
     .wizard-input-location {
-      width: 500dp;
+      width: 560dp;
+      height: 32dp;
     }
 
     .wizard-browse {
-      margin-left: 8dp;
+      flex-shrink: 0;
     }
 
     .wizard-hint {
       display: block;
-      margin-top: 4dp;
+      margin-top: 6dp;
+      color: @text-muted;
+      font-size: 11dp;
+    }
+
+    .wizard-sdk {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 10dp;
+      margin-top: 8dp;
+      padding: 10dp;
+      background-color: @surface-alt;
+      border: 1dp @border;
+      border-radius: 4dp;
+    }
+
+    .wizard-sdk-badge {
+      display: block;
+      width: 34dp;
+      height: 34dp;
+      flex-shrink: 0;
+      background-color: @accent;
+      border-radius: 4dp;
+      color: #ffffff;
+      font-size: 12dp;
+      font-weight: bold;
+      text-align: center;
+      line-height: 34dp;
+    }
+
+    .wizard-sdk-body {
+      display: block;
+      flex: 1 1 auto;
+    }
+
+    .wizard-sdk-title {
+      display: block;
+      color: @text;
+      font-weight: bold;
+    }
+
+    .wizard-sdk-detail {
+      display: block;
+      margin-top: 2dp;
       color: @text-muted;
       font-size: 11dp;
     }
 
     .wizard-error {
       display: block;
-      margin-top: 6dp;
+      margin-top: 8dp;
       padding: 6dp 8dp;
       background-color: @surface-alt;
       border: 1dp @error;
+      border-radius: 4dp;
       color: @error;
       font-size: 11dp;
-    }
-
-    .wizard-buttons {
-      display: flex;
-      flex-direction: row;
-      margin-top: 10dp;
     }
 
     .wizard-spacer {
@@ -719,7 +804,16 @@
     }
 
     .wizard-create {
-      margin-left: 8dp;
+      flex-shrink: 0;
+    }
+
+    .wizard-create.disabled {
+      background-color: @border-strong;
+      cursor: default;
+    }
+
+    .wizard-create.disabled:hover {
+      background-color: @border-strong;
     }
 
     /* Keep this rule last so it wins over every component display rule. */
@@ -786,72 +880,82 @@
 
       <div id="project_wizard" class="wizard-overlay hidden">
         <div class="wizard-dialog">
-          <div class="wizard-title">Create Project</div>
-          <div class="wizard-subtitle">Generate a CMake + Ninja project that references the BlackLight engine.</div>
-
-          <div class="wizard-section">Project type</div>
-          <div class="wizard-options">
-            <div id="wizard_kind_windows" class="wizard-option selected" data-action="wizard:kind:WindowsApp">
-              <span class="wizard-option-title">Windows App</span>
-              <span class="wizard-option-desc">Desktop window with a selectable graphics API.</span>
-            </div>
-            <div id="wizard_kind_game" class="wizard-option" data-action="wizard:kind:BlackLightGame">
-              <span class="wizard-option-title">BlackLightGame</span>
-              <span class="wizard-option-desc">Game loop with fixed and variable updates.</span>
-            </div>
-            <div id="wizard_kind_inject" class="wizard-option" data-action="wizard:kind:BlockLightUIInject">
-              <span class="wizard-option-title">BlockLightUIInject</span>
-              <span class="wizard-option-desc">DLL shell with an exported plugin API.</span>
-            </div>
-          </div>
-          <div id="wizard_kind_hint" class="wizard-hint">A desktop window with a selectable graphics API.</div>
-
-          <div class="wizard-section">Details</div>
-          <div class="wizard-row">
-            <div class="wizard-field wizard-field-half">
-              <div class="wizard-label">Project name</div>
-              <input id="wizard_name" class="wizard-input wizard-input-half" type="text" value="MyProject"/>
-            </div>
-            <div class="wizard-field wizard-field-half wizard-field-second">
-              <div class="wizard-label">C++ namespace</div>
-              <input id="wizard_namespace" class="wizard-input wizard-input-half" type="text" value="MyProject"/>
-            </div>
-          </div>
-          <div class="wizard-field">
-            <div class="wizard-label">Location</div>
-            <div class="wizard-row">
-              <input id="wizard_location" class="wizard-input wizard-input-location" type="text" value=""/>
-              <div class="ghost-button wizard-browse" data-action="wizard:browse">Browse...</div>
-            </div>
-          </div>
-          <div class="wizard-field">
-            <div class="wizard-label">BlackLight engine root</div>
-            <input id="wizard_engine" class="wizard-input" type="text" value=""/>
+          <div class="wizard-header">
+            <div class="wizard-title">Create Project</div>
+            <div class="wizard-subtitle">Generate a CMake + Ninja project powered by the BlackLight engine.</div>
           </div>
 
-          <div id="wizard_graphics_section">
-            <div class="wizard-section">Graphics API</div>
+          <div class="wizard-body">
+            <div class="wizard-section">Project type</div>
             <div class="wizard-options">
-              <div id="wizard_api_opengl" class="wizard-option selected" data-action="wizard:graphics:OpenGL">
-                <span class="wizard-option-title">OpenGL</span>
-                <span class="wizard-option-desc">Reference backend.</span>
+              <div id="wizard_kind_windows" class="wizard-option selected" data-action="wizard:kind:WindowsApp">
+                <span class="wizard-option-title">Windows App</span>
+                <span class="wizard-option-desc">Desktop window with a selectable graphics API.</span>
               </div>
-              <div id="wizard_api_dx11" class="wizard-option" data-action="wizard:graphics:DirectX11">
-                <span class="wizard-option-title">DirectX 11</span>
-                <span class="wizard-option-desc">Direct3D 11 device.</span>
+              <div id="wizard_kind_game" class="wizard-option" data-action="wizard:kind:BlackLightGame">
+                <span class="wizard-option-title">BlackLightGame</span>
+                <span class="wizard-option-desc">Game loop with fixed and variable updates.</span>
               </div>
-              <div id="wizard_api_dx12" class="wizard-option" data-action="wizard:graphics:DirectX12">
-                <span class="wizard-option-title">DirectX 12</span>
-                <span class="wizard-option-desc">Falls back to D3D11 for now.</span>
+              <div id="wizard_kind_inject" class="wizard-option" data-action="wizard:kind:BlockLightUIInject">
+                <span class="wizard-option-title">BlockLightUIInject</span>
+                <span class="wizard-option-desc">DLL shell with an exported plugin API.</span>
               </div>
             </div>
+            <div id="wizard_kind_hint" class="wizard-hint">A desktop window with a selectable graphics API.</div>
+
+            <div class="wizard-section">Details</div>
+            <div class="wizard-row">
+              <div class="wizard-field wizard-field-half">
+                <div class="wizard-label">Project name</div>
+                <input id="wizard_name" class="wizard-input wizard-input-half" type="text" value="MyProject"/>
+              </div>
+              <div class="wizard-field wizard-field-half wizard-field-second">
+                <div class="wizard-label">C++ namespace</div>
+                <input id="wizard_namespace" class="wizard-input wizard-input-half" type="text" value="MyProject"/>
+              </div>
+            </div>
+            <div class="wizard-field">
+              <div class="wizard-label">Location</div>
+              <div class="wizard-row">
+                <input id="wizard_location" class="wizard-input wizard-input-location" type="text" value=""/>
+                <div class="ghost-button wizard-browse" data-action="wizard:browse">Browse...</div>
+              </div>
+            </div>
+
+            <div class="wizard-section">Engine</div>
+            <div class="wizard-sdk">
+              <div class="wizard-sdk-badge">BL</div>
+              <div class="wizard-sdk-body">
+                <div id="wizard_sdk_title" class="wizard-sdk-title">BlackLight Engine SDK</div>
+                <div id="wizard_sdk_detail" class="wizard-sdk-detail">Downloaded automatically from the latest GitHub release when the project is created.</div>
+              </div>
+            </div>
+
+            <div id="wizard_graphics_section">
+              <div class="wizard-section">Graphics API</div>
+              <div class="wizard-options">
+                <div id="wizard_api_opengl" class="wizard-option selected" data-action="wizard:graphics:OpenGL">
+                  <span class="wizard-option-title">OpenGL</span>
+                  <span class="wizard-option-desc">Reference backend.</span>
+                </div>
+                <div id="wizard_api_dx11" class="wizard-option" data-action="wizard:graphics:DirectX11">
+                  <span class="wizard-option-title">DirectX 11</span>
+                  <span class="wizard-option-desc">Direct3D 11 device.</span>
+                </div>
+                <div id="wizard_api_dx12" class="wizard-option" data-action="wizard:graphics:DirectX12">
+                  <span class="wizard-option-title">DirectX 12</span>
+                  <span class="wizard-option-desc">Falls back to D3D11 for now.</span>
+                </div>
+              </div>
+            </div>
+
+            <div id="wizard_error" class="wizard-error hidden"></div>
           </div>
 
-          <div id="wizard_error" class="wizard-error hidden"></div>
-          <div class="wizard-buttons">
+          <div class="wizard-footer">
             <div class="wizard-spacer"></div>
             <div class="ghost-button" data-action="wizard:cancel">Cancel</div>
-            <div class="accent-button wizard-create" data-action="wizard:create">Create Project</div>
+            <div id="wizard_create" class="accent-button wizard-create" data-action="wizard:create">Create Project</div>
           </div>
         </div>
       </div>

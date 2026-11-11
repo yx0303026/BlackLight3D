@@ -102,8 +102,14 @@ The core and project layers have no RmlUi or engine dependency and are covered b
 ## Project system
 
 **File > New Project...** opens the modal wizard defined in `Editor.bui`. The
-wizard selects a project type, name, namespace, location, engine root, and (for
-executable projects) the graphics API.
+wizard selects a project type, name, namespace, location, and (for executable
+projects) the graphics API. The engine SDK is not configured by hand: when the
+project is created, the editor downloads the latest
+`blacklight_engine_x64_release.zip` asset from the
+[BlackLight GitHub releases](https://github.com/yx0303026/BlackLight3D/releases),
+extracts it under `%LOCALAPPDATA%\BlackLightEditor\Engine\<tag>`, and records that
+directory in the project. Cached releases are reused, and the editor falls back
+to the newest cached SDK when GitHub cannot be reached.
 
 | Project type | Generated target | Notes |
 | --- | --- | --- |
@@ -111,8 +117,20 @@ executable projects) the graphics API.
 | `BlackLightGame` | Executable | `Engine::Game` loop with variable and fixed updates, `assets/` content root |
 | `BlockLightUIInject` | DLL | Exported plugin API, `.def` export table, and `DllMain` shell |
 
-Every project records the BlackLight checkout it was generated against and is
-created with this layout:
+Template version `1.1.0` creates `ui/Main.bui` with a single centered `Hello Light`
+button. WindowsApp and BlackLightGame enable UI, load the Windows Arial font, and
+embed this document into the executable through the SDK's `blacklight_embed_bui`
+helper. Editing the document and rebuilding updates the interface without a runtime
+UI directory. The document is created only once, so scaffolding updates preserve
+user changes. Existing projects keep their source and UI files during an update.
+
+The default interface currently renders with OpenGL. DirectX backends have no
+engine UI adapter yet, so the generated host logs a warning and continues without
+UI. The injection template includes the same document for a host overlay to load;
+the DLL shell does not create its own window or install rendering hooks.
+
+Every project records the prebuilt engine SDK release it was generated against and
+is created with this layout:
 
 ```text
 MyProject/
@@ -131,23 +149,23 @@ id = {00000000-0000-4000-8000-000000000000}
 kind = BlackLightGame
 namespace = MyGame
 graphics = OpenGL
-engine_root = D:/Code/BlackLight3D
-engine_version = 0.1.0
-template_version = 1.0.0
+engine_root = C:/Users/you/AppData/Local/BlackLightEditor/Engine/v0.0.1
+engine_version = v0.0.1
+template_version = 1.1.0
 created = 2026-11-11
-dependency = BlackLight | 0.1.0 | D:/Code/BlackLight3D
+dependency = BlackLight | v0.0.1 | C:/Users/you/AppData/Local/BlackLightEditor/Engine/v0.0.1
 ```
 
 The generator supports:
 
 - `${VARIABLE}` substitution for project name, namespace, identifier, target,
-  engine root, engine version, template version, and date. `$${` escapes a
+  engine SDK root, engine version, template version, and date. `$${` escapes a
   literal `${` so generated CMake files can keep `${CMAKE_BINARY_DIR}`.
 - Template version tracking. **Tools > Update Project Scaffolding** rewrites only
   editor-managed files (`CMakeLists.txt`, `CMakePresets.json`, and project
   metadata) and bumps `template_version`; user source files are never touched.
 - Validation through **Build > Validate Project**: metadata, required
-  directories and files, the engine checkout, and template freshness are checked
+  directories and files, the engine SDK, and template freshness are checked
   and reported in the Output panel.
 - A persisted recent-projects list shown in the welcome viewport and saved to
   `[recent_projects]` in the editor configuration.
@@ -180,7 +198,7 @@ executable directory when `APPDATA` is unavailable. The file persists:
 - `[layout]` active tab per dock region
 - `[panels]` visibility and region per panel
 - `[recent]` recent workspace paths
-- `[project]` engine root, default project location, recent-project limit, last project
+- `[project]` default project location, recent-project limit, last project
 - `[recent_projects]` recent project name, path, kind, and timestamp
 - `[window]` last client size in density-independent pixels
 

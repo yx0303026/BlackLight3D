@@ -23,10 +23,6 @@
 using BlackLight::Engine::LogLevel;
 using BlackLight::Engine::Logger;
 
-#ifndef BLACKLIGHT_ENGINE_SOURCE_ROOT
-#define BLACKLIGHT_ENGINE_SOURCE_ROOT ""
-#endif
-
 namespace BlackLight::Editor
 {
 
@@ -57,19 +53,6 @@ namespace BlackLight::Editor
 			return GetExecutableDirectory() / "Projects";
 		}
 
-		/// Returns the engine checkout used at build time when it still exists.
-		std::string GetDefaultEngineRoot()
-		{
-			const std::filesystem::path root =
-				std::filesystem::u8path(BLACKLIGHT_ENGINE_SOURCE_ROOT);
-			if (root.empty())
-				return {};
-			std::error_code error;
-			if (!std::filesystem::is_directory(root, error) || error)
-				return {};
-			return root.u8string();
-		}
-
 		/// Loads the regular and bold faces used by the editor stylesheet.
 		bool LoadEditorFonts()
 		{
@@ -78,6 +61,12 @@ namespace BlackLight::Editor
 			if (!length || length >= MAX_PATH)
 				return false;
 			const std::filesystem::path fonts = std::filesystem::path(directory) / "Fonts";
+
+			// Segoe UI is the native Windows UI face; dialogs prefer it when it is present.
+			Rml::LoadFontFace((fonts / "segoeui.ttf").u8string(), "Segoe UI");
+			Rml::LoadFontFace((fonts / "segoeuib.ttf").u8string(), "Segoe UI",
+				Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Bold);
+
 			return Rml::LoadFontFace((fonts / "arial.ttf").u8string()) &&
 				Rml::LoadFontFace((fonts / "arialbd.ttf").u8string());
 		}
@@ -139,10 +128,6 @@ namespace BlackLight::Editor
 		history_.SetLimit(static_cast<std::size_t>(
 			std::max(1, config_.GetInt("editor", "history_limit", 128))));
 
-		engine_root_ = std::filesystem::u8path(
-			config_.Get("project", "engine_root", GetDefaultEngineRoot()));
-		if (engine_root_.empty())
-			engine_root_ = std::filesystem::u8path(GetDefaultEngineRoot());
 		default_project_location_ = std::filesystem::u8path(config_.Get("project",
 			"default_location", GetDefaultProjectsDirectory().u8string()));
 		if (default_project_location_.empty())
@@ -235,6 +220,7 @@ namespace BlackLight::Editor
 
 	void EditorApplication::OnUpdate()
 	{
+		wizard_.Update();
 		ProcessShortcuts();
 
 		if (logs_.GetRevision() != last_log_revision_)
@@ -948,7 +934,7 @@ namespace BlackLight::Editor
 
 	void EditorApplication::ShowCreateProjectWizard()
 	{
-		wizard_.Show("MyProject", default_project_location_, engine_root_);
+		wizard_.Show("MyProject", default_project_location_);
 		ui_dirty_ = true;
 	}
 
@@ -961,13 +947,14 @@ namespace BlackLight::Editor
 		}
 
 		const ProjectMetadata &metadata = project_.GetMetadata();
-		engine_root_ = metadata.engine_root;
 		default_project_location_ = options.directory;
-		config_.Set("project", "engine_root", engine_root_.u8string());
 		config_.Set("project", "default_location", default_project_location_.u8string());
 		recent_projects_.Add({metadata.name, project_.GetProjectFile().u8string(),
 			ToString(metadata.kind), ProjectGenerator::GetCurrentDate()});
 		config_.Save(config_path_);
+		BL_LOG(LogLevel::Info, "Project",
+			"Created " + metadata.name + " with engine SDK " + metadata.engine_version +
+				" at " + metadata.engine_root.u8string());
 		state_.SetStatus("Created project " + metadata.name);
 		ui_dirty_ = true;
 		return true;
@@ -995,8 +982,6 @@ namespace BlackLight::Editor
 		}
 
 		const ProjectMetadata &metadata = project_.GetMetadata();
-		engine_root_ = metadata.engine_root;
-		config_.Set("project", "engine_root", engine_root_.u8string());
 		recent_projects_.Add({metadata.name, project_.GetProjectFile().u8string(),
 			ToString(metadata.kind), ProjectGenerator::GetCurrentDate()});
 		config_.Save(config_path_);
@@ -1086,7 +1071,6 @@ namespace BlackLight::Editor
 		config_.Set("editor", "theme", theme_id_);
 		config_.Set("editor", "version", EditorVersion);
 		config_.SetInt("editor", "history_limit", static_cast<int>(history_.GetLimit()));
-		config_.Set("project", "engine_root", engine_root_.u8string());
 		config_.Set("project", "default_location", default_project_location_.u8string());
 		config_.SetInt("project", "recent_limit",
 			static_cast<int>(recent_projects_.GetLimit()));

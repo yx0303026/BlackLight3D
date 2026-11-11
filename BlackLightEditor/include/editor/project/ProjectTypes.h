@@ -50,7 +50,9 @@ namespace BlackLight::Editor
 		std::string id;
 		ProjectKind kind = ProjectKind::WindowsApp;
 		GraphicsApi graphics_api = GraphicsApi::OpenGL;
+		/// Directory of the prebuilt engine SDK downloaded from the GitHub releases.
 		std::filesystem::path engine_root;
+		/// Release tag of that SDK, for example `v0.0.1`.
 		std::string engine_version;
 	};
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "editor/project/EngineSdk.h"
 #include "editor/project/ProjectTypes.h"
 
 #include <filesystem>
@@ -14,8 +15,9 @@ namespace BlackLight::Editor
 
 	/// Drives the project creation dialog embedded in `Editor.bui`.
 	///
-	/// The wizard owns only transient form state; project generation is delegated
-	/// to the create handler supplied by the application.
+	/// The wizard owns only transient form state; the engine SDK is prepared in the
+	/// background and project generation is delegated to the create handler supplied
+	/// by the application.
 	class ProjectWizard final
 	{
 	public:
@@ -37,12 +39,14 @@ namespace BlackLight::Editor
 		void SetBrowseHandler(BrowseHandler handler);
 
 		/// Shows the dialog with sensible defaults.
-		void Show(std::string default_name, const std::filesystem::path &default_location,
-			const std::filesystem::path &engine_root);
-		/// Hides the dialog and clears the error text.
+		void Show(std::string default_name, const std::filesystem::path &default_location);
+		/// Hides the dialog and cancels a pending engine download.
 		void Hide();
 		/// Returns whether the dialog is visible.
 		bool IsVisible() const noexcept;
+
+		/// Advances the background engine download; call once per frame.
+		void Update();
 
 		/// Selects a project type programmatically.
 		void SelectKind(ProjectKind kind);
@@ -51,10 +55,13 @@ namespace BlackLight::Editor
 
 	private:
 		void HandleAction(std::string_view action);
+		void BeginCreate();
 		void CreateProject();
 		void BrowseLocation();
 		void RefreshSelection();
 		void RefreshKindHint();
+		void RefreshEngineInfo();
+		void SetBusy(bool busy);
 		void ShowError(std::string_view message);
 		void ClearError();
 		void HandleNameChanged();
@@ -64,9 +71,13 @@ namespace BlackLight::Editor
 		EditorUi *ui_ = nullptr;
 		CreateHandler create_handler_;
 		BrowseHandler browse_handler_;
+		EngineSdkInstaller sdk_installer_;
+		ProjectOptions pending_options_;
 		ProjectKind kind_ = ProjectKind::WindowsApp;
 		GraphicsApi graphics_api_ = GraphicsApi::OpenGL;
 		std::string last_derived_namespace_;
+		std::string last_sdk_status_;
+		bool busy_ = false;
 		bool visible_ = false;
 	};
 

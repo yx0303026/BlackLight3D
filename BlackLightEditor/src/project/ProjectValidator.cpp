@@ -86,7 +86,7 @@ namespace BlackLight::Editor
 				"The project namespace is not a valid C++ identifier: " + metadata.name_space);
 		}
 		if (metadata.engine_root.empty())
-			AddIssue(issues, ProjectIssueSeverity::Error, "The project has no BlackLight engine root");
+			AddIssue(issues, ProjectIssueSeverity::Error, "The project has no BlackLight engine SDK");
 		if (metadata.engine_version.empty())
 			AddIssue(issues, ProjectIssueSeverity::Warning, "The project does not record an engine version");
 		if (metadata.template_version.empty())
@@ -167,8 +167,8 @@ namespace BlackLight::Editor
 				"Missing assets directory: " + assets_directory.u8string(), assets_directory);
 		}
 
-		const std::filesystem::path engine_cmake =
-			metadata.engine_root / "BlackLight" / "CMakeLists.txt";
+		const std::filesystem::path engine_api_header =
+			metadata.engine_root / "include" / "BlackLightApi.h";
 		if (metadata.engine_root.empty())
 		{
 			// Already reported by ValidateMetadata.
@@ -176,14 +176,14 @@ namespace BlackLight::Editor
 		else if (!IsDirectory(metadata.engine_root))
 		{
 			AddIssue(issues, ProjectIssueSeverity::Error,
-				"The BlackLight engine root does not exist: " +
+				"The BlackLight engine SDK does not exist: " +
 					metadata.engine_root.u8string(), metadata.engine_root);
 		}
-		else if (!IsFile(engine_cmake))
+		else if (!IsFile(engine_api_header))
 		{
 			AddIssue(issues, ProjectIssueSeverity::Error,
-				"The BlackLight engine root does not contain BlackLight/CMakeLists.txt: " +
-					metadata.engine_root.u8string(), engine_cmake);
+				"The BlackLight engine SDK does not contain include/BlackLightApi.h: " +
+					metadata.engine_root.u8string(), engine_api_header);
 		}
 
 		if (!expected_template_version.empty() &&

@@ -65,6 +65,13 @@ namespace BlackLight::Editor
 			return "";
 		}
 
+		/// Returns the engine card text shown before a download starts.
+		std::string EngineSdkDescription()
+		{
+			return "Downloaded automatically from the latest GitHub release of " +
+				std::string(EngineSdk::Repository) + " when the project is created.";
+		}
+
 	} // namespace
 
 	void ProjectWizard::Initialize(EditorUi &ui)
@@ -109,8 +116,7 @@ namespace BlackLight::Editor
 	}
 
 	void ProjectWizard::Show(std::string default_name,
-		const std::filesystem::path &default_location,
-		const std::filesystem::path &engine_root)
+		const std::filesystem::path &default_location)
 	{
 		if (!ui_)
 			return;
@@ -119,7 +125,6 @@ namespace BlackLight::Editor
 			default_name = "MyProject";
 		SetInput("wizard_name", default_name);
 		SetInput("wizard_location", default_location.u8string());
-		SetInput("wizard_engine", engine_root.u8string());
 
 		last_derived_namespace_ = DeriveNamespace(default_name);
 		SetInput("wizard_namespace", last_derived_namespace_);
@@ -127,6 +132,8 @@ namespace BlackLight::Editor
 		kind_ = ProjectKind::WindowsApp;
 		graphics_api_ = GraphicsApi::OpenGL;
 		RefreshSelection();
+		RefreshEngineInfo();
+		SetBusy(false);
 		ClearError();
 		ui_->SetVisible("project_wizard", true);
 		visible_ = true;
@@ -134,6 +141,12 @@ namespace BlackLight::Editor
 
 	void ProjectWizard::Hide()
 	{
+		if (busy_)
+		{
+			sdk_installer_.Cancel();
+			SetBusy(false);
+		}
+		pending_options_ = {};
 		if (ui_)
 		{
 			ui_->SetVisible("project_wizard", false);
@@ -143,6 +156,40 @@ namespace BlackLight::Editor
 	}
 
 	bool ProjectWizard::IsVisible() const noexcept { return visible_; }
+
+	void ProjectWizard::Update()
+	{
+		if (!busy_ || !ui_)
+			return;
+
+		const std::string status = sdk_installer_.GetStatus();
+		if (!status.empty() && status != last_sdk_status_)
+		{
+			last_sdk_status_ = status;
+			ui_->SetText("wizard_sdk_detail", status);
+		}
+
+		if (!sdk_installer_.Poll())
+			return;
+
+		SetBusy(false);
+		if (sdk_installer_.GetState() != EngineSdkInstaller::State::Ready)
+		{
+			const std::string &error = sdk_installer_.GetError();
+			ShowError(error.empty() ? "Failed to prepare the BlackLight engine SDK." : error);
+			RefreshEngineInfo();
+			pending_options_ = {};
+			return;
+		}
+
+		const EngineSdkPackage &package = sdk_installer_.GetPackage();
+		pending_options_.engine_root = package.root;
+		pending_options_.engine_version = package.tag;
+		ui_->SetText("wizard_sdk_title", "BlackLight Engine SDK " + package.tag);
+		ui_->SetText("wizard_sdk_detail",
+			"Engine SDK " + package.tag + " is ready to generate the project.");
+		CreateProject();
+	}
 
 	void ProjectWizard::SelectKind(ProjectKind kind)
 	{
@@ -163,9 +210,11 @@ namespace BlackLight::Editor
 			Hide();
 			return;
 		}
+		if (busy_)
+			return;
 		if (action == "wizard:create")
 		{
-			CreateProject();
+			BeginCreate();
 			return;
 		}
 		if (action == "wizard:browse")
@@ -192,9 +241,9 @@ namespace BlackLight::Editor
 		}
 	}
 
-	void ProjectWizard::CreateProject()
+	void ProjectWizard::BeginCreate()
 	{
-		if (!ui_)
+		if (!ui_ || busy_)
 			return;
 
 		const std::string name = Trim(GetInput("wizard_name"));
@@ -216,12 +265,6 @@ namespace BlackLight::Editor
 			ShowError("Choose a project location.");
 			return;
 		}
-		const std::string engine_root = Trim(GetInput("wizard_engine"));
-		if (engine_root.empty())
-		{
-			ShowError("Choose the BlackLight engine root.");
-			return;
-		}
 
 		ProjectOptions options;
 		options.name = name;
@@ -236,7 +279,6 @@ namespace BlackLight::Editor
 		}
 		options.kind = kind_;
 		options.graphics_api = graphics_api_;
-		options.engine_root = std::filesystem::u8path(engine_root);
 
 		if (!create_handler_)
 		{
@@ -244,8 +286,26 @@ namespace BlackLight::Editor
 			return;
 		}
 
+		pending_options_ = std::move(options);
+		ClearError();
+		SetBusy(true);
+		last_sdk_status_.clear();
+		ui_->SetText("wizard_sdk_title", "Preparing engine SDK");
+		ui_->SetText("wizard_sdk_detail",
+			"Checking the latest BlackLight release on GitHub...");
+		sdk_installer_.Start();
+	}
+
+	void ProjectWizard::CreateProject()
+	{
+		if (!create_handler_)
+		{
+			ShowError("Project creation is not configured.");
+			return;
+		}
+
 		std::string error;
-		if (!create_handler_(options, error))
+		if (!create_handler_(pending_options_, error))
 		{
 			ShowError(error.empty() ? "Failed to create the project." : error);
 			return;
@@ -288,6 +348,23 @@ namespace BlackLight::Editor
 	{
 		if (ui_)
 			ui_->SetText("wizard_kind_hint", KindDescription(kind_));
+	}
+
+	void ProjectWizard::RefreshEngineInfo()
+	{
+		if (!ui_)
+			return;
+		ui_->SetText("wizard_sdk_title", "BlackLight Engine SDK");
+		ui_->SetText("wizard_sdk_detail", EngineSdkDescription());
+	}
+
+	void ProjectWizard::SetBusy(bool busy)
+	{
+		busy_ = busy;
+		if (!ui_)
+			return;
+		ui_->SetClass("wizard_create", "disabled", busy);
+		ui_->SetText("wizard_create", busy ? "Preparing..." : "Create Project");
 	}
 
 	void ProjectWizard::ShowError(std::string_view message)

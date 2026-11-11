@@ -27,6 +27,7 @@ namespace BlackLight::Editor
 		std::string name_space;
 		ProjectKind kind = ProjectKind::WindowsApp;
 		GraphicsApi graphics_api = GraphicsApi::OpenGL;
+		/// Directory of the prebuilt engine SDK recorded at generation time.
 		std::filesystem::path engine_root;
 		std::string engine_version;
 		std::string template_version;

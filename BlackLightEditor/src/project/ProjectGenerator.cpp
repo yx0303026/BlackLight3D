@@ -14,8 +14,6 @@ namespace BlackLight::Editor
 	namespace
 	{
 
-		constexpr const char *TargetArchitecture = "x64";
-
 		/// Removes leading and trailing ASCII whitespace.
 		std::string Trim(std::string_view text)
 		{
@@ -148,7 +146,7 @@ namespace BlackLight::Editor
 		}
 		if (normalized.engine_root.empty())
 		{
-			result.error = "Choose the BlackLight engine root";
+			result.error = "The BlackLight engine SDK is required";
 			return result;
 		}
 
@@ -205,13 +203,13 @@ namespace BlackLight::Editor
 		if (!IsDirectory(engine_root))
 		{
 			result.warnings.push_back(
-				"The BlackLight engine root does not exist yet: " + engine_root.u8string());
+				"The BlackLight engine SDK does not exist yet: " + engine_root.u8string());
 		}
 		else if (!std::filesystem::is_regular_file(
-			engine_root / "BlackLight" / "CMakeLists.txt", filesystem_error))
+			engine_root / "include" / "BlackLightApi.h", filesystem_error))
 		{
 			result.warnings.push_back(
-				"The BlackLight engine root does not contain BlackLight/CMakeLists.txt: " +
+				"The BlackLight engine SDK does not contain include/BlackLightApi.h: " +
 				engine_root.u8string());
 		}
 
@@ -337,7 +335,7 @@ namespace BlackLight::Editor
 		context.Set("GRAPHICS_API_UPPER", ToUpper(ToString(metadata.graphics_api)));
 		context.Set("GRAPHICS_BACKEND", GetEngineBackend(metadata.graphics_api));
 		context.Set("GRAPHICS_API_NOTE", GetGraphicsApiNote(metadata.graphics_api));
-		context.Set("ENGINE_ROOT", ToGenericPath(metadata.engine_root));
+		context.Set("ENGINE_SDK_ROOT", ToGenericPath(metadata.engine_root));
 		context.Set("ENGINE_VERSION", metadata.engine_version.empty()
 			? TemplateLibrary::GetEngineVersion()
 			: metadata.engine_version);
@@ -349,7 +347,6 @@ namespace BlackLight::Editor
 			? metadata.created.substr(0, 4)
 			: GetCurrentDate().substr(0, 4);
 		context.Set("YEAR", year);
-		context.Set("TARGET_ARCH", TargetArchitecture);
 		context.Set("INCLUDE_GUARD", ToUpper(metadata.name_space) + "_PLUGIN_API_H");
 		return context;
 	}

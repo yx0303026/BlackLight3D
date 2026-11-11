@@ -113,7 +113,6 @@ namespace BlackLight::Editor
 		ProjectWizard wizard_;
 		LogBuffer logs_;
 		std::vector<AssetEntry> assets_;
-		std::filesystem::path engine_root_;
 		std::filesystem::path default_project_location_;
 		std::string theme_id_ = "dark";
 		std::size_t last_log_revision_ = 0;

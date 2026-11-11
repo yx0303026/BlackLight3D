@@ -5,6 +5,7 @@
 #include "editor/core/EditorEvent.h"
 #include "editor/core/EditorState.h"
 #include "editor/core/EditorTheme.h"
+#include "editor/project/EngineSdk.h"
 #include "editor/project/ProjectFile.h"
 #include "editor/project/ProjectGenerator.h"
 #include "editor/project/ProjectManager.h"
@@ -88,11 +89,13 @@ namespace
 		return stream.str();
 	}
 
-	/// Creates the minimum engine checkout that project generation and validation require.
+	/// Creates the minimum engine SDK layout that project generation and validation require.
 	void CreateEngineStub(const std::filesystem::path &root)
 	{
-		WriteFile(root / "BlackLight" / "CMakeLists.txt",
-			"cmake_minimum_required(VERSION 3.25)\nproject(BlackLight)\n");
+		WriteFile(root / "include" / "BlackLightApi.h", "#pragma once\n");
+		WriteFile(root / "blacklight_engine_x64_static.lib", "");
+		WriteFile(root / "rmlui.lib", "");
+		WriteFile(root / "freetype.lib", "");
 	}
 
 	/// Builds metadata that passes every validation rule for the supplied directories.
@@ -637,12 +640,15 @@ namespace
 
 			const std::string cmake = ReadFile(result.project_root / "CMakeLists.txt");
 			CHECK(cmake.find("project(\"" + options.name + "\"") != std::string::npos);
-			CHECK(cmake.find("${CMAKE_BINARY_DIR}") != std::string::npos);
+			CHECK(cmake.find("BLACKLIGHT_SDK_ROOT") != std::string::npos);
+			CHECK(cmake.find("blacklight_engine_x64_static.lib") != std::string::npos);
+			CHECK(cmake.find("add_subdirectory") == std::string::npos);
 			CHECK(cmake.find("${PROJECT_") == std::string::npos);
 
 			const std::string presets =
 				ReadFile(result.project_root / "CMakePresets.json");
 			CHECK(presets.find("${sourceDir}") != std::string::npos);
+			CHECK(presets.find("BLACKLIGHT_SDK_ROOT") != std::string::npos);
 			CHECK(presets.find("${PROJECT_") == std::string::npos);
 
 			for (const GeneratedFile &file : result.files)
@@ -790,6 +796,20 @@ namespace
 		CHECK(!restored.Add({}));
 	}
 
+	void TestEngineSdkPackageLayout()
+	{
+		TempDirectory temp;
+		CHECK(!EngineSdk::IsPackage({}));
+		CHECK(!EngineSdk::IsPackage(temp.GetPath()));
+
+		// A partial download must not be treated as a usable SDK.
+		WriteFile(temp.GetPath() / "include" / "BlackLightApi.h", "#pragma once\n");
+		CHECK(!EngineSdk::IsPackage(temp.GetPath()));
+
+		CreateEngineStub(temp.GetPath());
+		CHECK(EngineSdk::IsPackage(temp.GetPath()));
+	}
+
 } // namespace
 
 int main()
@@ -807,6 +827,7 @@ int main()
 	TestProjectValidation();
 	TestProjectGeneration();
 	TestProjectManagerAndRecentProjects();
+	TestEngineSdkPackageLayout();
 
 	std::printf("All editor core tests passed\n");
 	return 0;

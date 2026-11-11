@@ -6,6 +6,7 @@ add_library(blacklight_editor_core STATIC
 	src/core/EditorEvent.cpp
 	src/core/EditorState.cpp
 	src/core/EditorTheme.cpp
+	src/project/EngineSdk.cpp
 	src/project/ProjectFile.cpp
 	src/project/ProjectGenerator.cpp
 	src/project/ProjectManager.cpp
@@ -54,14 +55,11 @@ target_link_libraries(blacklight_editor
 	PRIVATE comdlg32
 	PRIVATE shell32
 	PRIVATE ole32
+	PRIVATE winhttp
 )
 
 target_include_directories(blacklight_editor
 	PRIVATE ${CMAKE_SOURCE_DIR}/BlackLight/include
-)
-
-target_compile_definitions(blacklight_editor
-	PRIVATE BLACKLIGHT_ENGINE_SOURCE_ROOT="${CMAKE_SOURCE_DIR}"
 )
 
 if(MSVC)
@@ -80,7 +78,8 @@ blacklight_embed_bui(blacklight_editor
 
 if(BLACKLIGHT_BUILD_TESTS)
 	add_executable(blacklight_editor_tests tests/EditorCoreTests.cpp)
-	target_link_libraries(blacklight_editor_tests PRIVATE blacklight_editor_core)
+	target_link_libraries(blacklight_editor_tests PRIVATE blacklight_editor_core
+		shell32 ole32 winhttp)
 	set_target_properties(blacklight_editor_tests PROPERTIES
 		CXX_STANDARD 17
 		CXX_STANDARD_REQUIRED YES
