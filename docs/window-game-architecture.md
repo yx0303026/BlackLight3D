@@ -92,27 +92,27 @@ int main()
 }
 ```
 
-`GameConfig` extends `WindowConfig`, retaining `window` and `backend_name` and
-adding `fixed_step_seconds`, `maximum_delta_seconds`, and `content_root`.
+`GameConfig` extends `WindowConfig`, retaining the normalized rendering
+configuration and adding `fixed_step_seconds`, `maximum_delta_seconds`, and
+`content_root`.
 `GetInput()`, `GetContext()`, `Initialize()`, `Run()`, `Exit()`, and `Shutdown()`
 are inherited. `GetGameTime()`, `GetWorld()`, `GetContent()`, and
 `GetSpriteBatch()` expose game services.
 
 ## Lifecycle
 
-1. `Initialize()` creates the backend, connects input, resets game timing when
+1. `Initialize()` creates the rendering device, connects input, resets game timing when
    applicable, and invokes `OnInitialize()`. A failed initialization releases
    native resources; partially initialized application resources are released
    through `OnShutdown()`.
 2. Each frame starts an input snapshot, pumps messages, and updates application
    state. `Game` samples its clock and dispatches `OnUpdate(GameTime)` followed
    by zero or more `OnFixedUpdate(GameTime)` calls.
-3. Backend `BeginFrame()` prepares and clears the framebuffer. Application
-   `OnRender` draws the scene, backend `Render()` draws UI, and `Present()`
-   displays the result. The Windows OpenGL backend implements both stages.
+3. Device `BeginFrame()` prepares and clears the framebuffer. Application
+   `OnRender` records scene work, optional UI rendering follows, and `Present()`
+   displays the result.
 4. `Run()` calls `OnShutdown()` while the context and game services still exist,
-   then shuts down the backend. It returns `1` on initialization, frame setup,
-   UI rendering, or presentation failure, and `0` on ordinary termination.
+   then shuts down the device. Device failures throw `RenderingException`.
    Callback exceptions release resources and propagate to the caller.
 
 `Exit()` requests termination. `Shutdown()` invoked from an active frame or
@@ -132,16 +132,14 @@ their context; `DemoWindow::OnShutdown()` illustrates this ordering.
 
 ## Migration and Scope
 
-- Replace a hand-written application backend loop with a subclass of `Window`
-  or `Game`. Graphics backends remain service implementations of
-  `IGraphicsBackend`; they are not application hosts.
+- Replace a hand-written application rendering loop with a subclass of `Window`
+  or `Game`. Use `GetRenderingDevice()` to access the normalized device.
 - Rename game `OnDraw(const GameTime&)` overrides to
   `OnRender(const GameTime&)`. `Game` is abstract until this hook is implemented.
 - Include `Ecs.h`, `Content.h`, or `SpriteBatch.h` when using those concrete
   services from a `Game.h` client, or include `Engine.h` for the complete API.
-- Custom backends should clear in `BeginFrame()` and draw UI in `Render()`.
-  The default `BeginFrame()` is a no-op; backends clearing in `Render()` must
-  migrate to preserve application scene graphics.
+- Select OpenGL or Direct3D 11 through `WindowConfig::rendering.backend`.
+  Resource creation and draw submission are not implemented yet.
 
 The game path exposes every game service currently implemented in this
 repository. It is not yet feature-equivalent to MonoGame: audio, gamepads,

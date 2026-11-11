@@ -34,14 +34,15 @@ and the UI headers for desktop applications. Application entry points subclass
 these hosts instead of managing a graphics backend loop directly. The Demo
 implements the lightweight `Window` path.
 
-The runtime keeps rendering behind `IGraphicsBackend`, so another graphics
-backend can be added without changing gameplay code. Current game services are
-a runtime foundation: audio, physics, and GPU sprite submission are not supplied.
+The runtime keeps graphics API selection behind `RenderingDevice`. The Windows
+surface lifecycle supports OpenGL and Direct3D 11; normalized GPU resources,
+draw submission, and UI adapters remain incomplete. Current game services are a
+runtime foundation: audio, physics, and GPU sprite submission are not supplied.
 See [`docs/window-game-architecture.md`](docs/window-game-architecture.md) for
 lifecycle details, examples, and migration from `OnDraw`.
 
-The implementation notes and the current RmlUi backend boundary are documented in
-[`docs/engine-core.md`](docs/engine-core.md).
+See [`docs/rendering-device.md`](docs/rendering-device.md) for the new graphics
+interface and its current implementation limits.
 
 To require locally installed packages, configure with `-DBLACKLIGHT_FETCH_DEPENDENCIES=OFF`. Disable tests with `-DBLACKLIGHT_BUILD_TESTS=OFF`.
 

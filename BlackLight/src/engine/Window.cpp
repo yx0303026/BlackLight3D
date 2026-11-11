@@ -1,23 +1,21 @@
 #include "engine/Window.h"
 #include "engine/Input.h"
+
+#include <stdexcept>
 #include <utility>
 
 namespace BlackLight::Engine
 {
-	/// Owns desktop state shared by UI applications and games.
+	/// Owns the host configuration and lifecycle flags.
 	class Window::Impl
 	{
 	public:
-		/// Copies the title so the backend never observes a temporary config string.
-		explicit Impl(WindowConfig value)
-			: config(std::move(value)), title(config.window.title ? config.window.title : "BlackLight3D")
-		{
-			config.window.title = title.c_str();
-		}
+		/// Stores the normalized device configuration.
+		explicit Impl(WindowConfig value) : config(std::move(value)) {}
+
 		WindowConfig config;
-		std::string title;
 		InputState input;
-		std::unique_ptr<IGraphicsBackend> backend;
+		std::unique_ptr<Rendering::RenderingDevice> device;
 		bool initialized = false;
 		bool application_started = false;
 		bool exit_requested = false;
@@ -26,47 +24,37 @@ namespace BlackLight::Engine
 		bool shutting_down = false;
 	};
 
-	/// Creates only the state required by the desktop host.
+	/// Creates a host with no native resources.
 	Window::Window(WindowConfig config) : impl_(std::make_unique<Impl>(std::move(config))) {}
-	/// Releases the backend without dispatching callbacks to a destroyed subclass.
+
+	/// Releases the device without invoking virtual callbacks.
 	Window::~Window()
 	{
-		if (impl_->backend)
-			impl_->backend->Shutdown();
+		if (impl_->device)
+			impl_->device->Shutdown();
 	}
-	/// Initializes native resources and unwinds partial application initialization on failure.
-	GraphicsResult Window::Initialize()
+
+	/// Initializes the device and application hooks.
+	void Window::Initialize()
 	{
 		if (impl_->initializing || impl_->shutting_down)
-			return GraphicsResult::NotInitialized;
+			throw std::logic_error("Window initialization is already in progress");
 		if (impl_->initialized)
-			return GraphicsResult::Success;
+			return;
+
 		try
 		{
-			impl_->backend = CreateGraphicsBackend(impl_->config.backend_name.c_str());
-			if (!impl_->backend)
-				return GraphicsResult::ContextCreationFailed;
+			impl_->device = Rendering::RenderingDevice::Create(impl_->config.rendering);
 			impl_->input = InputState{};
-			impl_->backend->SetInputSink(&impl_->input);
-			const auto result = impl_->backend->Initialize(impl_->config.window);
-			if (result != GraphicsResult::Success)
-			{
-				Shutdown();
-				return result;
-			}
+			impl_->device->Initialize(impl_->config.rendering, &impl_->input);
 			impl_->exit_requested = false;
 			impl_->application_started = true;
 			impl_->initializing = true;
 			OnStarting();
-			const bool ready = OnInitialize();
+			if (!OnInitialize())
+				throw std::runtime_error("Application initialization failed");
 			impl_->initializing = false;
-			if (!ready)
-			{
-				Shutdown();
-				return GraphicsResult::NotInitialized;
-			}
 			impl_->initialized = true;
-			return GraphicsResult::Success;
 		}
 		catch (...)
 		{
@@ -75,40 +63,30 @@ namespace BlackLight::Engine
 			throw;
 		}
 	}
-	/// Pumps messages, draws application content and UI, and releases the runtime.
+
+	/// Pumps events, records application work, renders UI, and presents.
 	int Window::Run()
 	{
 		if (impl_->running)
 			return 1;
-		if (Initialize() != GraphicsResult::Success)
-			return 1;
+		Initialize();
 		impl_->running = true;
 		int status = 0;
 		try
 		{
-			while (!impl_->exit_requested && !impl_->backend->ShouldClose())
+			while (!impl_->exit_requested && !impl_->device->GetSurfaceState().should_close)
 			{
 				impl_->input.BeginFrame();
-				if (!impl_->backend->Update() || impl_->backend->ShouldClose())
+				if (!impl_->device->ProcessEvents())
 					break;
 				OnUpdate();
 				if (impl_->exit_requested)
 					break;
-				if (impl_->backend->BeginFrame() != GraphicsResult::Success)
-				{
-					status = 1;
-					break;
-				}
+				impl_->device->BeginFrame();
 				OnRender();
-				if (impl_->backend->Render() != GraphicsResult::Success ||
-					impl_->backend->Present() != GraphicsResult::Success)
-				{
-					status = 1;
-					break;
-				}
+				impl_->device->RenderUi();
+				impl_->device->Present();
 			}
-			impl_->running = false;
-			Shutdown();
 		}
 		catch (...)
 		{
@@ -116,9 +94,12 @@ namespace BlackLight::Engine
 			Shutdown();
 			throw;
 		}
+		impl_->running = false;
+		Shutdown();
 		return status;
 	}
-	/// Defers shutdown during callbacks and otherwise releases resources exactly once.
+
+	/// Releases application and device resources exactly once.
 	void Window::Shutdown()
 	{
 		if (impl_->running || impl_->initializing)
@@ -139,35 +120,36 @@ namespace BlackLight::Engine
 			}
 			catch (...)
 			{
-				if (impl_->backend)
-					impl_->backend->Shutdown();
-				impl_->backend.reset();
+				if (impl_->device)
+					impl_->device->Shutdown();
+				impl_->device.reset();
 				impl_->shutting_down = false;
 				throw;
 			}
 		}
-		if (impl_->backend)
-			impl_->backend->Shutdown();
-		impl_->backend.reset();
+		if (impl_->device)
+			impl_->device->Shutdown();
+		impl_->device.reset();
 		impl_->shutting_down = false;
 	}
-	/// Marks the desktop loop for termination.
+
+	/// Requests loop termination.
 	void Window::Exit() noexcept { impl_->exit_requested = true; }
-	/// Exposes desktop input without any game service dependency.
+	/// Returns the input state.
 	InputState &Window::GetInput() noexcept { return impl_->input; }
-	/// Exposes the initialized graphics implementation.
-	IGraphicsBackend *Window::GetGraphicsBackend() noexcept { return impl_->backend.get(); }
-	/// Exposes the UI context for document construction.
+	/// Returns the active rendering device.
+	Rendering::RenderingDevice *Window::GetRenderingDevice() noexcept { return impl_->device.get(); }
+	/// Returns the optional UI context.
 	Rml::Context *Window::GetContext() const noexcept
 	{
-		return impl_->backend ? impl_->backend->GetContext() : nullptr;
+		return impl_->device ? impl_->device->GetUiContext() : nullptr;
 	}
-	/// Provides an optional runtime reset hook.
+	/// Provides an optional initialization hook.
 	void Window::OnStarting() {}
-	/// Provides an optional desktop update hook.
+	/// Provides an optional update hook.
 	void Window::OnUpdate() {}
-	/// Provides an optional desktop graphics hook.
+	/// Provides an optional rendering hook.
 	void Window::OnRender() {}
-	/// Provides an optional desktop cleanup hook.
+	/// Provides an optional shutdown hook.
 	void Window::OnShutdown() {}
 }

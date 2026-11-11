@@ -38,42 +38,28 @@ if(NOT TARGET RmlUi::Core)
 	FetchContent_MakeAvailable(rmlui)
 endif()
 
-find_package(tinyxml2 11 CONFIG QUIET)
-if(NOT TARGET tinyxml2::tinyxml2)
-	if(NOT BLACKLIGHT_FETCH_DEPENDENCIES)
-		message(FATAL_ERROR "TinyXML2 11 was not found and BLACKLIGHT_FETCH_DEPENDENCIES is OFF.")
-	endif()
-
-	set(tinyxml2_BUILD_TESTING OFF CACHE BOOL "Build TinyXML2 tests" FORCE)
-	FetchContent_Declare(
-		tinyxml2
-		GIT_REPOSITORY https://github.com/leethomason/tinyxml2.git
-		GIT_TAG 11.0.0
-		GIT_SHALLOW TRUE
-	)
-	FetchContent_MakeAvailable(tinyxml2)
-endif()
-
 if(NOT TARGET RmlUi::Core)
 	message(FATAL_ERROR "The RmlUi package did not provide the expected RmlUi::Core target.")
 endif()
 
 set(BLACKLIGHT_ENGINE_SOURCES
-	src/rmlui/RmlUiTree.cpp
-	src/rmlui/HTMLElement.cpp
-	src/rmlui/HTMLParser.cpp
-	src/rmlui/HtmlCssParser.cpp
+	src/rmlui/BuiDocument.cpp
+	src/rmlui/BuiLoader.cpp
+	src/rmlui/BuiTree.cpp
 	src/engine/Content.cpp
 	src/engine/Ecs.cpp
 	src/engine/Game.cpp
 	src/engine/Window.cpp
-	src/engine/GraphicsBackendRegistry.cpp
-	src/engine/GraphicsBackend.cpp
 	src/engine/Input.cpp
 	src/engine/Logger.cpp
 	src/engine/SpriteBatch.cpp
 	src/engine/Time.cpp
-	src/engine/backends/WindowsOpenGLBackend.cpp
+	src/engine/rendering_device/RenderingDevice.cpp
+	src/engine/rendering_device/RenderingResources.cpp
+	src/engine/rendering_device/CommandList.cpp
+	src/engine/rendering_device/Shader.cpp
+	src/engine/rendering_device/opengl/OpenGLDevice.cpp
+	src/engine/rendering_device/d3d11/Direct3D11Device.cpp
 )
 
 add_library(blacklight_engine SHARED ${BLACKLIGHT_ENGINE_SOURCES}
@@ -109,11 +95,11 @@ target_include_directories(blacklight_engine_static
 
 target_link_libraries(blacklight_engine
 	PUBLIC RmlUi::Core
-	PRIVATE tinyxml2::tinyxml2 opengl32
+	PRIVATE opengl32 d3d11 dxgi
 )
 target_link_libraries(blacklight_engine_static
 	PUBLIC RmlUi::Core
-	PRIVATE tinyxml2::tinyxml2 opengl32
+	PRIVATE opengl32 d3d11 dxgi
 )
 target_compile_definitions(blacklight_engine PRIVATE BLACKLIGHT_BUILD_SHARED)
 target_compile_definitions(blacklight_engine_static PUBLIC BLACKLIGHT_STATIC)
@@ -127,21 +113,11 @@ else()
 endif()
 
 if(BLACKLIGHT_BUILD_TESTS)
-	add_executable(blacklight_rmlui_tests tests/HTMLParserTests.cpp)
-	target_link_libraries(blacklight_rmlui_tests PRIVATE BlackLight::EngineStatic)
-	add_test(NAME blacklight_rmlui_tests COMMAND blacklight_rmlui_tests)
-
-	add_executable(blacklight_htmlcss_tests tests/HtmlCssParserTests.cpp)
-	target_link_libraries(blacklight_htmlcss_tests PRIVATE BlackLight::EngineStatic)
-	add_test(NAME blacklight_htmlcss_tests COMMAND blacklight_htmlcss_tests)
-
 	add_executable(blacklight_engine_tests tests/LoggerTests.cpp)
 	target_link_libraries(blacklight_engine_tests PRIVATE BlackLight::EngineStatic)
 	add_test(NAME blacklight_engine_tests COMMAND blacklight_engine_tests)
 
 	if(MSVC)
-		target_compile_options(blacklight_rmlui_tests PRIVATE /EHsc)
-		target_compile_options(blacklight_htmlcss_tests PRIVATE /EHsc)
 		target_compile_options(blacklight_engine_tests PRIVATE /EHsc)
 	endif()
 endif()

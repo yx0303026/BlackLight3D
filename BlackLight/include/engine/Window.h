@@ -1,68 +1,73 @@
 #pragma once
 
 #include "../BlackLightApi.h"
-#include "IGraphicsBackend.h"
+#include "rendering_device/RenderingDevice.h"
+
 #include <memory>
-#include <string>
+
+namespace Rml
+{
+	class Context;
+}
 
 namespace BlackLight::Engine
 {
 	class InputState;
 
-	/// Configures a desktop UI host without allocating game services.
+	/// Configures a desktop host and its normalized rendering device.
 	struct WindowConfig
 	{
-		GraphicsWindow window{};
-		std::string backend_name = "windows-opengl";
+		Rendering::DeviceConfig rendering{};
 	};
 
 	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_PUSH
 
-	/// Abstract desktop UI host owning window, input, UI rendering, and presentation.
+	/// Owns desktop input, rendering, optional UI, and the application lifecycle.
 	class BLACKLIGHT_API Window
 	{
 	public:
-		/// Creates an inactive desktop host with the supplied configuration.
+		/// Creates an inactive desktop host with the supplied device configuration.
 		explicit Window(WindowConfig config = {});
-		/// Releases native resources; call Shutdown before derived members are destroyed.
+		/// Releases the rendering device and native resources.
 		virtual ~Window();
 		/// Prevents copying a native window owner.
 		Window(const Window &) = delete;
 		/// Prevents assigning a native window owner.
 		Window &operator=(const Window &) = delete;
-		/// Keeps callback and native window addresses stable.
+		/// Keeps native callback addresses stable.
 		Window(Window &&) = delete;
-		/// Keeps callback and native window addresses stable.
+		/// Keeps native callback addresses stable.
 		Window &operator=(Window &&) = delete;
-		/// Creates the backend and invokes application initialization.
-		GraphicsResult Initialize();
-		/// Runs the desktop loop and shuts down; returns nonzero on rendering failure.
+
+		/// Initializes the rendering device and application.
+		void Initialize();
+		/// Runs the desktop loop and shuts down before returning.
 		int Run();
-		/// Releases application resources before destroying the UI and native context.
+		/// Releases application and rendering resources.
 		void Shutdown();
-		/// Requests termination before the next frame.
+		/// Requests loop termination.
 		void Exit() noexcept;
-		/// Returns the desktop keyboard and mouse state.
+		/// Returns the current input snapshot.
 		InputState &GetInput() noexcept;
-		/// Returns the active backend, or nullptr while inactive.
-		IGraphicsBackend *GetGraphicsBackend() noexcept;
-		/// Returns the UI context, or nullptr while inactive.
+		/// Returns the normalized rendering device.
+		Rendering::RenderingDevice *GetRenderingDevice() noexcept;
+		/// Returns the optional RmlUi context.
 		Rml::Context *GetContext() const noexcept;
 
 	protected:
-		/// Builds application UI after the graphics context is available.
+		/// Builds application UI after the rendering device is initialized.
 		virtual bool OnInitialize() = 0;
-		/// Resets runtime services before invoking application initialization.
+		/// Resets application state before initialization.
 		virtual void OnStarting();
-		/// Updates desktop application state once per frame.
+		/// Updates application state once per frame.
 		virtual void OnUpdate();
-		/// Draws application graphics before the UI overlay.
+		/// Records application rendering commands.
 		virtual void OnRender();
-		/// Releases context-dependent resources, including partial initialization.
+		/// Releases application resources.
 		virtual void OnShutdown();
 
 	private:
-		/// Stores private runtime state outside the SDK header.
+		/// Stores runtime state outside the public ABI.
 		class Impl;
 		std::unique_ptr<Impl> impl_;
 	};
