@@ -1,5 +1,10 @@
 # BlackLight3D UI Demo - HTML + CSS 版本
 
+当前入口 `DemoWindow : BlackLight::Engine::Window` 使用轻量桌面 UI 链路。
+窗口、输入、UI 渲染与呈现由 `Window::Run()` 管理；Demo 在
+`OnInitialize()` 构建 HTML UI，在 `OnShutdown()` 释放 UI 树。
+游戏程序继承 `Game`，详见 [引擎类结构](../docs/window-game-architecture.md)。
+
 这是一个演示 BlackLight UI HTML+CSS 解析器的现代化应用程序。使用标准Web技术定义游戏引擎UI。
 
 ## 📋 项目结构

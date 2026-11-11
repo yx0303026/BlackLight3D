@@ -432,7 +432,8 @@ namespace BlackLight::Engine::Windows
 		return !should_close_;
 	}
 
-	GraphicsResult WindowsOpenGLBackend::Render()
+	/// Prepares the framebuffer before game or desktop application graphics.
+	GraphicsResult WindowsOpenGLBackend::BeginFrame()
 	{
 		if (!opengl_context_)
 		{
@@ -441,6 +442,14 @@ namespace BlackLight::Engine::Windows
 
 		glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		return GraphicsResult::Success;
+	}
+
+	/// Draws UI over the application scene without clearing it.
+	GraphicsResult WindowsOpenGLBackend::Render()
+	{
+		if (!opengl_context_)
+			return GraphicsResult::NotInitialized;
 
 		if (rmlui_context_)
 		{

@@ -66,7 +66,10 @@ namespace BlackLight::Engine
 		/// Updates input and processes one frame. Returns false if the window should close.
 		virtual bool Update() = 0;
 
-		/// Renders the current frame.
+		/// Prepares and clears a frame before application graphics are drawn.
+		virtual GraphicsResult BeginFrame();
+
+		/// Renders the UI overlay after application graphics.
 		virtual GraphicsResult Render() = 0;
 
 		/// Presents the rendered frame to the screen.

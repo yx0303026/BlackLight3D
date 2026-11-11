@@ -1,5 +1,9 @@
 # Engine Core Runtime
 
+The current application hierarchy is documented in
+[Window and Game Hosts](window-game-architecture.md). Desktop applications derive
+from `Window`; games derive from `Game` and implement `OnRender(GameTime)`.
+
 本阶段把 BlackLight3D 从“窗口 + RmlUi 清屏示例”扩展为可以承载游戏逻辑的 C++17 运行时骨架。所有新增类型都位于 `BlackLight::Engine`，渲染实现仍通过 `IGraphicsBackend` 注入，SDK 头文件不依赖 OpenGL 细节。
 
 ## 模块
@@ -29,6 +33,9 @@ protected:
                 position.x += static_cast<float>(time.fixed_elapsed_seconds * 60.0);
             });
     }
+
+    /// Draws the scene before the engine-owned UI overlay.
+    void OnRender(const BlackLight::Engine::GameTime&) override {}
 };
 
 int main() {

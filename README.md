@@ -21,12 +21,24 @@ The package contains `blacklight_engine_<arch>.dll`, its import library,
 
 ## Engine Runtime
 
-The public engine runtime now includes a host-independent `Game` loop, fixed-step
-timing, platform input snapshots, generation-safe ECS entities, rooted content
-caching, math primitives, a process-wide logger, and a deferred `SpriteBatch`
-command collector. Start from `BlackLight/include/engine/Game.h` when building a
-game host. The runtime keeps rendering behind `IGraphicsBackend`, so a DirectX or
-Vulkan backend can be added without changing gameplay code.
+Applications derive from one of two abstract hosts:
+
+- `Window` (`engine/Window.h`) owns the desktop window, input, RmlUi context,
+  event loop, UI drawing, and presentation. It does not allocate game services.
+- `Game : Window` (`engine/Game.h`) adds variable and fixed updates, game timing,
+  generation-safe ECS entities, rooted content caching, and a sprite collector.
+  Every concrete game implements `OnRender(const GameTime&)`.
+
+Include `engine/Engine.h` for the full engine convenience API, or `engine/Window.h`
+and the UI headers for desktop applications. Application entry points subclass
+these hosts instead of managing a graphics backend loop directly. The Demo
+implements the lightweight `Window` path.
+
+The runtime keeps rendering behind `IGraphicsBackend`, so another graphics
+backend can be added without changing gameplay code. Current game services are
+a runtime foundation: audio, physics, and GPU sprite submission are not supplied.
+See [`docs/window-game-architecture.md`](docs/window-game-architecture.md) for
+lifecycle details, examples, and migration from `OnDraw`.
 
 The implementation notes and the current RmlUi backend boundary are documented in
 [`docs/engine-core.md`](docs/engine-core.md).

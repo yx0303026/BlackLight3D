@@ -1,25 +1,21 @@
 #pragma once
 
 #include "../BlackLightApi.h"
-#include "Content.h"
-#include "Ecs.h"
-#include "IGraphicsBackend.h"
-#include "Input.h"
+#include "Window.h"
 #include "Time.h"
 
-#include <cstdint>
 #include <filesystem>
 #include <memory>
-#include <string>
 
 namespace BlackLight::Engine
 {
+	class World;
+	class ContentManager;
+	class SpriteBatch;
 
 	/// Configures the host-independent game loop.
-	struct GameConfig
+	struct GameConfig : WindowConfig
 	{
-		GraphicsWindow window{};
-		std::string backend_name = "windows-opengl";
 		double fixed_step_seconds = 1.0 / 60.0;
 		double maximum_delta_seconds = 0.25;
 		std::filesystem::path content_root = "Content";
@@ -27,35 +23,27 @@ namespace BlackLight::Engine
 
 	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_PUSH
 
-	/// Owns engine services and drives initialization, update, draw, and shutdown.
-	class BLACKLIGHT_API Game
+	/// Abstract game host adding timing, ECS, content, and sprites to the desktop host.
+	class BLACKLIGHT_API Game : public Window
 	{
 	public:
 		/// Creates a game with the supplied runtime configuration.
 		explicit Game(GameConfig config = {});
 
-		/// Shuts down the game and releases its backend.
-		virtual ~Game();
+		/// Releases game services while the base desktop context still exists.
+		~Game() override;
 
+		/// Prevents copying a game runtime.
 		Game(const Game &) = delete;
+		/// Prevents assigning a game runtime.
 		Game &operator=(const Game &) = delete;
+		/// Keeps game callback addresses stable.
 		Game(Game &&) = delete;
+		/// Keeps game callback addresses stable.
 		Game &operator=(Game &&) = delete;
-
-		/// Initializes the backend and invokes the game initialization hook.
-		GraphicsResult Initialize();
-
-		/// Runs the game loop until Exit is called or the window closes.
-		int Run();
-
-		/// Requests loop termination after the current frame.
-		void Exit() noexcept;
 
 		/// Returns the current game timing snapshot.
 		const GameTime &GetGameTime() const noexcept;
-
-		/// Returns the mutable input state.
-		InputState &GetInput() noexcept;
 
 		/// Returns the entity world.
 		World &GetWorld() noexcept;
@@ -63,12 +51,12 @@ namespace BlackLight::Engine
 		/// Returns the content manager.
 		ContentManager &GetContent() noexcept;
 
-		/// Returns the active graphics backend.
-		IGraphicsBackend *GetGraphicsBackend() noexcept;
+		/// Returns the sprite collector; the renderer supplies its submission callback.
+		SpriteBatch &GetSpriteBatch() noexcept;
 
 	protected:
 		/// Initializes game-owned content and entities after the backend is ready.
-		virtual bool OnInitialize();
+		bool OnInitialize() override;
 
 		/// Updates variable-rate gameplay once per rendered frame.
 		virtual void OnUpdate(const GameTime &game_time);
@@ -76,24 +64,19 @@ namespace BlackLight::Engine
 		/// Updates deterministic gameplay at the configured fixed rate.
 		virtual void OnFixedUpdate(const GameTime &game_time);
 
-		/// Draws the current game state between backend Render and Present.
-		virtual void OnDraw(const GameTime &game_time);
-
-		/// Releases game-owned resources before the backend is shut down.
-		virtual void OnShutdown();
+		/// Draws the game scene before the UI overlay; every game must implement it.
+		virtual void OnRender(const GameTime &game_time) = 0;
 
 	private:
-		/// Runs one frame and returns false when the loop should terminate.
-		bool RunFrame();
-
-		GameConfig config_;
-		FrameClock clock_;
-		InputState input_;
-		World world_;
-		ContentManager content_;
-		std::unique_ptr<IGraphicsBackend> graphics_backend_;
-		bool initialized_ = false;
-		bool exit_requested_ = false;
+		/// Resets game timing before application initialization.
+		void OnStarting() final;
+		/// Samples time and dispatches variable and fixed gameplay updates.
+		void OnUpdate() final;
+		/// Dispatches rendering with the current timing snapshot.
+		void OnRender() final;
+		/// Stores game services outside the SDK header.
+		class Impl;
+		std::unique_ptr<Impl> impl_;
 	};
 
 	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_POP

@@ -32,6 +32,8 @@ namespace BlackLight::Engine::Windows
 		uint32_t GetDrawableWidth() const noexcept override;
 		uint32_t GetDrawableHeight() const noexcept override;
 		bool Update() override;
+		/// Clears the drawable before application rendering.
+		GraphicsResult BeginFrame() override;
 		GraphicsResult Render() override;
 		GraphicsResult Present() override;
 		void Shutdown() override;

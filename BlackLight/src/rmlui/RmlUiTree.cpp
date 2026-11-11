@@ -18,7 +18,7 @@ html, body {
     display: block; 
     width: 100%; 
     height: 100%; 
-    font-family: Arial, sans-serif; 
+    font-family: Arial;
     color: #f4f6f8;
     margin: 0;
     padding: 0;
@@ -78,6 +78,34 @@ void ApplyInlineStyle(Rml::Element& native_element, const HTMLElement& element) 
 	}
 }
 
+/// Copies HTML attributes that are meaningful to the native RmlUi element.
+void ApplyAttributes(Rml::Element& native_element, const HTMLElement& element) {
+	for (const auto& [name, value] : element.GetAttributes().custom_attributes) {
+		native_element.SetAttribute(name, value);
+	}
+}
+
+/// Collects embedded style text so it can be merged with the base stylesheet.
+void CollectEmbeddedStyles(const HTMLElement& element, std::string& css) {
+	if (element.GetTagName() == "style") {
+		if (const auto* container = dynamic_cast<const HTMLContainer*>(&element)) {
+			for (const auto& child : container->GetChildren()) {
+				if (const auto* text = dynamic_cast<const HTMLText*>(child.get())) {
+					css += "\n";
+					css += text->GetText();
+				}
+			}
+		}
+		return;
+	}
+
+	if (const auto* container = dynamic_cast<const HTMLContainer*>(&element)) {
+		for (const auto& child : container->GetChildren()) {
+			CollectEmbeddedStyles(*child, css);
+		}
+	}
+}
+
 bool BuildElement(const HTMLElement& html_element, Rml::Element& parent_native, 
 	std::unordered_map<std::string, Rml::Element*>& elements_by_id, UIBuildError& error)
 {
@@ -94,25 +122,21 @@ bool BuildElement(const HTMLElement& html_element, Rml::Element& parent_native,
 	}
 
 	const std::string& tag_name = html_element.GetTagName();
-	Rml::Element* native_element = nullptr;
-
-	if (tag_name == "button") {
-		native_element = parent_native.AppendChild(
-			parent_native.GetOwnerDocument()->CreateElement("button")
-		);
-	} else if (tag_name == "input") {
-		native_element = parent_native.AppendChild(
-			parent_native.GetOwnerDocument()->CreateElement("input")
-		);
-	} else if (tag_name == "select" || tag_name == "textarea") {
-		native_element = parent_native.AppendChild(
-			parent_native.GetOwnerDocument()->CreateElement(tag_name)
-		);
-	} else {
-		native_element = parent_native.AppendChild(
-			parent_native.GetOwnerDocument()->CreateElement("div")
-		);
+	// These tags are document structure in HTML and are already represented by RmlUi's document/body.
+	if (tag_name == "html" || tag_name == "head" || tag_name == "body" || tag_name == "style") {
+		if (const auto* container = dynamic_cast<const HTMLContainer*>(&html_element)) {
+			for (const auto& child : container->GetChildren()) {
+				if (!BuildElement(*child, parent_native, elements_by_id, error)) {
+					return false;
+				}
+			}
+		}
+		return true;
 	}
+
+	Rml::Element* native_element = nullptr;
+	native_element = parent_native.AppendChild(
+		parent_native.GetOwnerDocument()->CreateElement(tag_name));
 
 	if (!native_element) {
 		SetBuildError(error, "Failed to create element: " + tag_name);
@@ -122,6 +146,7 @@ bool BuildElement(const HTMLElement& html_element, Rml::Element& parent_native,
 	ApplyIdentifier(*native_element, html_element);
 	ApplyClasses(*native_element, html_element);
 	ApplyInlineStyle(*native_element, html_element);
+	ApplyAttributes(*native_element, html_element);
 
 	if (!html_element.GetId().empty()) {
 		elements_by_id[html_element.GetId()] = native_element;
@@ -157,24 +182,18 @@ bool RmlUiTree::Build(Rml::Context& context, const HTMLDocument& document,
 		return false;
 	}
 
-	auto default_stylesheet_container = std::make_shared<Rml::StyleSheetContainer>();
-	Rml::StreamMemory default_stream(
-		reinterpret_cast<const Rml::byte*>(DEFAULT_STYLE_SHEET),
-		std::strlen(DEFAULT_STYLE_SHEET)
-	);
-	if (default_stylesheet_container->LoadStyleSheetContainer(&default_stream)) {
-		new_tree->document_->SetStyleSheetContainer(default_stylesheet_container);
-	}
-
+	std::string combined_stylesheet = DEFAULT_STYLE_SHEET;
 	for (const auto& css : document.GetStyleSheets()) {
-		auto stylesheet_container = std::make_shared<Rml::StyleSheetContainer>();
-		Rml::StreamMemory stream(
-			reinterpret_cast<const Rml::byte*>(css.c_str()),
-			css.size()
-		);
-		if (stylesheet_container->LoadStyleSheetContainer(&stream)) {
-			new_tree->document_->SetStyleSheetContainer(stylesheet_container);
-		}
+		combined_stylesheet += "\n";
+		combined_stylesheet += css;
+	}
+	CollectEmbeddedStyles(document, combined_stylesheet);
+	auto stylesheet_container = std::make_shared<Rml::StyleSheetContainer>();
+	Rml::StreamMemory stream(
+		reinterpret_cast<const Rml::byte*>(combined_stylesheet.data()),
+		combined_stylesheet.size());
+	if (stylesheet_container->LoadStyleSheetContainer(&stream)) {
+		new_tree->document_->SetStyleSheetContainer(stylesheet_container);
 	}
 
 	for (const auto& child : document.GetChildren()) {

@@ -1,130 +1,83 @@
+#include "engine/Window.h"
 #include "rmlui/HtmlCssParser.h"
-#include "engine/IGraphicsBackend.h"
-#include "engine/backends/WindowsOpenGLBackend.h"
 #include "rmlui/RmlUiTree.h"
 
-#include <RmlUi/Core.h>
-
-#include <iostream>
 #include <fstream>
-#include <sstream>
+#include <iostream>
 #include <memory>
+#include <sstream>
+#include <string>
+#include <utility>
 
-#if defined(_WIN32)
-#include <conio.h>
-#endif
+namespace
+{
+	/// Loads and displays an HTML desktop UI through the lightweight Window host.
+	class DemoWindow final : public BlackLight::Engine::Window
+	{
+	public:
+		/// Selects the document before the desktop runtime is initialized.
+		explicit DemoWindow(std::string html_path) : Window(CreateConfig()), html_path_(std::move(html_path)) {}
 
-using namespace BlackLight::UI;
-using namespace BlackLight::Engine;
+	protected:
+		/// Parses the document and builds its UI in the host-owned context.
+		bool OnInitialize() override
+		{
+			std::ifstream file(html_path_);
+			if (!file)
+			{
+				std::cerr << "Could not open UI file: " << html_path_ << '\n';
+				return false;
+			}
+			std::ostringstream buffer;
+			buffer << file.rdbuf();
+			std::unique_ptr<BlackLight::UI::HTMLDocument> document;
+			BlackLight::UI::HTMLParseError parse_error;
+			if (!BlackLight::UI::HtmlCssParser::Parse(buffer.str(), "", document, parse_error))
+			{
+				std::cerr << "Parse error at line " << parse_error.line << ": " << parse_error.message << '\n';
+				return false;
+			}
+			BlackLight::UI::UIBuildError build_error;
+			if (!GetContext() ||
+				!BlackLight::UI::RmlUiTree::Build(*GetContext(), *document, ui_tree_, build_error))
+			{
+				std::cerr << "UI build error: " << build_error.message << '\n';
+				return false;
+			}
+			ui_tree_->Show();
+			return true;
+		}
 
-namespace {
+		/// Destroys the document before Window releases the RmlUi context.
+		void OnShutdown() override { ui_tree_.reset(); }
 
-/// Keeps the console window open so the final output stays readable.
-void WaitForAnyKey() {
-	std::cout << "\nPress any key to continue . . ." << std::flush;
-#if defined(_WIN32)
-	_getch();
-#else
-	std::cin.get();
-#endif
-	std::cout << std::endl;
+	private:
+		/// Sets the desktop window dimensions and title.
+		static BlackLight::Engine::WindowConfig CreateConfig()
+		{
+			BlackLight::Engine::WindowConfig config;
+			config.window.width = 1280;
+			config.window.height = 720;
+			config.window.title = "BlackLight3D UI Demo";
+			return config;
+		}
+
+		std::string html_path_;
+		std::unique_ptr<BlackLight::UI::RmlUiTree> ui_tree_;
+	};
 }
 
-} // namespace
-
-/// Loads HTML content from a file.
-std::string LoadHtmlFile(const char* filepath) {
-	std::ifstream file(filepath);
-	if (!file.is_open()) {
-		std::cerr << "Error: Could not open file: " << filepath << std::endl;
-		return "";
+/// Starts the desktop UI application using the common engine lifecycle.
+int main(int argc, char *argv[])
+{
+	try
+	{
+		DemoWindow window(argc > 1 ? argv[1] : "UI/Main.html");
+		return window.Run();
 	}
-	std::stringstream buffer;
-	buffer << file.rdbuf();
-	return buffer.str();
-}
-
-int main(int argc, char* argv[]) {
-	std::cout << "BlackLight3D - UI Rendering Demo\n" << std::endl;
-
-	// Initialize graphics backend
-	std::unique_ptr<IGraphicsBackend> backend = CreateGraphicsBackend("windows-opengl");
-	if (!backend) {
-		std::cerr << "Error: Failed to create graphics backend" << std::endl;
-		WaitForAnyKey();
+	catch (const std::exception &error)
+	{
+		std::cerr << "Desktop runtime failed: " << error.what() << '\n';
 		return 1;
 	}
-
-	GraphicsWindow window_config;
-	window_config.width = 1280;
-	window_config.height = 720;
-	window_config.title = "BlackLight3D UI Demo";
-
-	GraphicsResult result = backend->Initialize(window_config);
-	if (result != GraphicsResult::Success) {
-		std::cerr << "Error: Failed to initialize graphics backend" << std::endl;
-		WaitForAnyKey();
-		return 1;
-	}
-
-	Rml::Context* rml_context = backend->GetContext();
-	if (!rml_context) {
-		std::cerr << "Error: Failed to get RmlUi context" << std::endl;
-		WaitForAnyKey();
-		return 1;
-	}
-
-	// Load and parse HTML
-	std::string html_file = "UI\\Main.html";
-	if (argc > 1) {
-		html_file = argv[1];
-	}
-
-	std::cout << "Loading UI from: " << html_file << std::endl;
-	std::string html_content = LoadHtmlFile(html_file.c_str());
-	if (html_content.empty()) {
-		backend->Shutdown();
-		WaitForAnyKey();
-		return 1;
-	}
-
-	// Parse UI with HTML+CSS Parser
-	std::unique_ptr<HTMLDocument> document;
-	HTMLParseError parse_error;
-
-	if (!HtmlCssParser::Parse(html_content, "", document, parse_error)) {
-		std::cerr << "Parse Error at line " << parse_error.line
-			<< ": " << parse_error.message << std::endl;
-		backend->Shutdown();
-		WaitForAnyKey();
-		return 1;
-	}
-
-	// Build RmlUi tree
-	std::unique_ptr<RmlUiTree> ui_tree;
-	UIBuildError build_error;
-
-	if (!RmlUiTree::Build(*rml_context, *document, ui_tree, build_error)) {
-		std::cerr << "Build Error: " << build_error.message << std::endl;
-		backend->Shutdown();
-		WaitForAnyKey();
-		return 1;
-	}
-
-	ui_tree->Show();
-	std::cout << "UI loaded successfully. Starting render loop...\n" << std::endl;
-
-	// Render loop
-	while (backend->Update() && !backend->ShouldClose()) {
-		backend->Render();
-		backend->Present();
-	}
-
-	std::cout << "\nShutting down..." << std::endl;
-	ui_tree.reset();
-	backend->Shutdown();
-
-	std::cout << "Demo completed successfully" << std::endl;
-	WaitForAnyKey();
-	return 0;
 }

@@ -66,6 +66,7 @@ set(BLACKLIGHT_ENGINE_SOURCES
 	src/engine/Content.cpp
 	src/engine/Ecs.cpp
 	src/engine/Game.cpp
+	src/engine/Window.cpp
 	src/engine/GraphicsBackendRegistry.cpp
 	src/engine/GraphicsBackend.cpp
 	src/engine/Input.cpp

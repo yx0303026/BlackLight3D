@@ -2,6 +2,11 @@
 
 namespace BlackLight::Engine
 {
+	/// Allows existing backends to opt into frame preparation separately from UI rendering.
+	GraphicsResult IGraphicsBackend::BeginFrame()
+	{
+		return GraphicsResult::Success;
+	}
 
 	void IGraphicsBackend::SetInputSink(InputState * /*input*/) noexcept {}
 
