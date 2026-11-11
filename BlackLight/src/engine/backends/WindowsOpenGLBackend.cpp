@@ -7,6 +7,10 @@
 #include <memory>
 #include <iostream>
 #include <chrono>
+#include <cstdint>
+#include <unordered_map>
+#include <string>
+#include <vector>
 #include <windowsx.h>
 
 #pragma comment(lib, "opengl32.lib")
@@ -56,22 +60,59 @@ namespace BlackLight::Engine::Windows
 			}
 		};
 
-		// Minimal render interface used by the backend until a hardware renderer is installed.
+		/// Stores RmlUi mesh data and draws it with the current compatibility OpenGL context.
 		class SimpleRenderInterface : public Rml::RenderInterface
 		{
 		public:
+			/// Copies geometry into backend-owned storage until RmlUi releases its handle.
 			Rml::CompiledGeometryHandle CompileGeometry(
-				Rml::Span<const Rml::Vertex> /*vertices*/,
-				Rml::Span<const int> /*indices*/) override
+				Rml::Span<const Rml::Vertex> vertices,
+				Rml::Span<const int> indices) override
 			{
-				return next_geometry_handle_++;
+				const Rml::CompiledGeometryHandle handle = next_geometry_handle_++;
+				geometry_.emplace(handle, Geometry{
+					std::vector<Rml::Vertex>(vertices.begin(), vertices.end()),
+					std::vector<int>(indices.begin(), indices.end())});
+				return handle;
 			}
 
-			void RenderGeometry(Rml::CompiledGeometryHandle /*geometry*/,
-				Rml::Vector2f /*translation*/, Rml::TextureHandle /*texture*/) override {}
+			/// Draws one indexed mesh with premultiplied-alpha blending.
+			void RenderGeometry(Rml::CompiledGeometryHandle handle,
+				Rml::Vector2f translation, Rml::TextureHandle texture) override
+			{
+				const auto found = geometry_.find(handle);
+				if (found == geometry_.end() || found->second.indices.empty())
+					return;
 
-			void ReleaseGeometry(Rml::CompiledGeometryHandle /*geometry*/) override {}
+				const Geometry& geometry = found->second;
+				glPushMatrix();
+				glTranslatef(translation.x, translation.y, 0.f);
+				glEnableClientState(GL_VERTEX_ARRAY);
+				glEnableClientState(GL_COLOR_ARRAY);
+				glVertexPointer(2, GL_FLOAT, sizeof(Rml::Vertex), &geometry.vertices[0].position);
+				glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(Rml::Vertex), &geometry.vertices[0].colour);
+				if (texture != 0) {
+					glEnable(GL_TEXTURE_2D);
+					glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+					glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(texture));
+					glTexCoordPointer(2, GL_FLOAT, sizeof(Rml::Vertex), &geometry.vertices[0].tex_coord);
+				} else {
+					glDisable(GL_TEXTURE_2D);
+					glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+				}
+				glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(geometry.indices.size()),
+					GL_UNSIGNED_INT, geometry.indices.data());
+				glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+				glPopMatrix();
+			}
 
+			/// Releases a previously compiled mesh.
+			void ReleaseGeometry(Rml::CompiledGeometryHandle handle) override
+			{
+				geometry_.erase(handle);
+			}
+
+			/// Image-file decoding is not part of this minimal backend.
 			Rml::TextureHandle LoadTexture(Rml::Vector2i& texture_dimensions,
 				const Rml::String& /*source*/) override
 			{
@@ -79,18 +120,71 @@ namespace BlackLight::Engine::Windows
 				return 0;
 			}
 
-			Rml::TextureHandle GenerateTexture(Rml::Span<const Rml::byte> /*source*/,
-				Rml::Vector2i /*source_dimensions*/) override
+			/// Uploads RmlUi-generated RGBA textures, including FreeType glyph atlases.
+			Rml::TextureHandle GenerateTexture(Rml::Span<const Rml::byte> source,
+				Rml::Vector2i source_dimensions) override
 			{
-				return 0;
+				if (source.empty() || source_dimensions.x <= 0 || source_dimensions.y <= 0)
+					return 0;
+
+				GLuint texture = 0;
+				glGenTextures(1, &texture);
+				if (texture == 0)
+					return 0;
+				glBindTexture(GL_TEXTURE_2D, texture);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, source_dimensions.x, source_dimensions.y,
+					0, GL_RGBA, GL_UNSIGNED_BYTE, source.data());
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+				return static_cast<Rml::TextureHandle>(texture);
 			}
 
-			void ReleaseTexture(Rml::TextureHandle /*texture*/) override {}
-			void EnableScissorRegion(bool /*enable*/) override {}
-			void SetScissorRegion(Rml::Rectanglei /*region*/) override {}
+			/// Deletes an uploaded texture while the OpenGL context is current.
+			void ReleaseTexture(Rml::TextureHandle texture) override
+			{
+				const GLuint gl_texture = static_cast<GLuint>(texture);
+				glDeleteTextures(1, &gl_texture);
+			}
+
+			/// Enables or disables window-space clipping.
+			void EnableScissorRegion(bool enable) override
+			{
+				enable ? glEnable(GL_SCISSOR_TEST) : glDisable(GL_SCISSOR_TEST);
+			}
+
+			/// Sets a top-left-origin clip rectangle for the current drawable.
+			void SetScissorRegion(Rml::Rectanglei region) override
+			{
+				glScissor(region.Left(), static_cast<GLint>(viewport_height_) - region.Bottom(),
+					region.Width(), region.Height());
+			}
+
+			/// Updates the viewport used to convert RmlUi coordinates to OpenGL coordinates.
+			void SetViewport(uint32_t width, uint32_t height)
+			{
+				viewport_height_ = static_cast<GLint>(height);
+				glViewport(0, 0, static_cast<GLsizei>(width), static_cast<GLsizei>(height));
+				glMatrixMode(GL_PROJECTION);
+				glLoadIdentity();
+				glOrtho(0, width, height, 0, -1, 1);
+				glMatrixMode(GL_MODELVIEW);
+				glLoadIdentity();
+				glEnable(GL_BLEND);
+				glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+			}
 
 		private:
+			/// Holds one immutable mesh referenced by an RmlUi geometry handle.
+			struct Geometry {
+				std::vector<Rml::Vertex> vertices;
+				std::vector<int> indices;
+			};
+
 			Rml::CompiledGeometryHandle next_geometry_handle_ = 1;
+			std::unordered_map<Rml::CompiledGeometryHandle, Geometry> geometry_;
+			GLint viewport_height_ = 0;
 		};
 
 	} // namespace
@@ -190,6 +284,7 @@ namespace BlackLight::Engine::Windows
 		Shutdown();
 	}
 
+	/// Initializes the Win32/OpenGL backend and its RmlUi interfaces.
 	GraphicsResult WindowsOpenGLBackend::Initialize(const GraphicsWindow &window)
 	{
 		should_close_ = false;
@@ -242,6 +337,21 @@ namespace BlackLight::Engine::Windows
 			return GraphicsResult::ContextCreationFailed;
 		}
 		rmlui_initialized_ = true;
+		char windows_directory[MAX_PATH]{};
+		const UINT windows_directory_length = GetWindowsDirectoryA(
+			windows_directory, static_cast<UINT>(sizeof(windows_directory)));
+		if (windows_directory_length == 0 || windows_directory_length >= sizeof(windows_directory)) {
+			std::cerr << "Failed to locate the Windows system directory" << std::endl;
+			Shutdown();
+			return GraphicsResult::ContextCreationFailed;
+		}
+		const std::string default_font_path = std::string(windows_directory, windows_directory_length) +
+			"\\Fonts\\arial.ttf";
+		if (!Rml::LoadFontFace(default_font_path)) {
+			std::cerr << "Failed to load the default RmlUi font" << std::endl;
+			Shutdown();
+			return GraphicsResult::ContextCreationFailed;
+		}
 		rmlui_renderer_ = std::make_unique<Rml::RenderManager>(rmlui_render_interface_.get());
 
 		// Create RmlUi context
@@ -326,6 +436,8 @@ namespace BlackLight::Engine::Windows
 
 		if (rmlui_context_)
 		{
+			static_cast<SimpleRenderInterface*>(rmlui_render_interface_.get())->SetViewport(
+				drawable_width_, drawable_height_);
 			rmlui_context_->Render();
 		}
 

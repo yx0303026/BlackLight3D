@@ -8,6 +8,7 @@
 - `Input.h/.cpp`：`InputState` 保存键盘、鼠标按键、鼠标位置和滚轮的当前状态及按下/释放边沿。平台后端只需要调用 `SetKeyDown`、`SetMouseButtonDown` 等方法。
 - `Ecs.h/.cpp`：`World` 使用实体代际编号避免悬空句柄，组件按 `type_index` 分池。`Each<A, B>` 在一条遍历中访问满足组件集合的实体。
 - `Content.h/.cpp`：`ContentManager` 以内容根目录为边界，缓存不可变二进制和 UTF-8 文本资产，适合在游戏初始化或后台加载阶段复用。
+- `Logger.h/.cpp`：`Logger` 是进程级、线程安全的日志器，支持级别过滤、控制台输出、可选日志文件和自定义 sink。`BL_LOG_INFO("Category") << ...` 宏在级别被过滤时不会构造消息。
 - `SpriteBatch.h/.cpp`：`SpriteBatch` 收集 2D 命令，并按纹理或深度排序后交给宿主回调。实际 GPU 纹理和顶点上传不进入 SDK ABI。
 - `Game.h/.cpp`：`Game` 统一后端初始化、输入采样、可变更新、固定更新、渲染、呈现和退出生命周期。
 
@@ -36,6 +37,12 @@ int main() {
 }
 ```
 
+```cpp
+BlackLight::Engine::Logger::Get().SetMinimumLevel(BlackLight::Engine::LogLevel::Info);
+BL_LOG_INFO("Render") << "GPU backend initialized: " << name;
+BL_LOG_ERROR("Content") << "Missing asset: " << path;
+```
+
 ## Windows 后端
 
 `WindowsOpenGLBackend` 现在会：
@@ -44,8 +51,13 @@ int main() {
 2. 将键盘、鼠标按键、鼠标位置和滚轮消息写入 `InputState`。
 3. 在窗口尺寸变化时同步 OpenGL viewport、RmlUi context dimensions 和 drawable size。
 4. 使用 RmlUi 6.3 的 `RenderInterface`/`RenderManager` 生命周期，而不是旧版本不存在的全局 `SetRenderManager` API。
+5. 使用 RmlUi 自带的 FreeType 字体引擎，并在初始化后加载 Windows Arial 字体。将 `RMLUI_FONT_ENGINE` 设为 `none` 会导致 RmlUi 6.3 在没有自定义 `FontEngineInterface` 时初始化失败。
 
-当前 `SimpleRenderInterface` 是可工作的空硬件接口，负责让 RmlUi 生命周期和 UI 树能够运行；它没有实现纹理上传和实际几何绘制。下一阶段应替换为现代 OpenGL/Vulkan/DirectX 设备层，并让 `SpriteBatch` 的提交回调直接写入持久映射的顶点环。
+当前 Windows OpenGL 接口绘制 RmlUi 编译几何、上传生成的 RGBA 纹理（包括 FreeType 字形图集），并支持 scissor 裁剪。外部图片文件解码和高级图层/滤镜效果尚未实现；该兼容管线渲染器后续可替换为现代 OpenGL/Vulkan/DirectX 设备层，并让 `SpriteBatch` 的提交回调直接写入 GPU 顶点缓冲。
+
+## RmlUi 字体初始化修复
+
+错误 `[RmlUi ERROR] No font engine interface set!` 的直接原因是依赖配置关闭了 RmlUi 的内置字体引擎。构建时启用 FreeType 后，`Rml::Initialise()` 会自动创建默认字体接口；Windows 后端随后从 Windows 系统目录加载 Arial，供 UI 文本使用。UI 树构建时也为文档设置 Arial 和白色文字，避免缺少字体属性警告。重新配置现有构建目录后再构建，避免沿用缓存的 `RMLUI_FONT_ENGINE=none`。
 
 ## 构建与回归
 

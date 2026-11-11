@@ -10,8 +10,27 @@
 #include <sstream>
 #include <memory>
 
+#if defined(_WIN32)
+#include <conio.h>
+#endif
+
 using namespace BlackLight::UI;
 using namespace BlackLight::Engine;
+
+namespace {
+
+/// Keeps the console window open so the final output stays readable.
+void WaitForAnyKey() {
+	std::cout << "\nPress any key to continue . . ." << std::flush;
+#if defined(_WIN32)
+	_getch();
+#else
+	std::cin.get();
+#endif
+	std::cout << std::endl;
+}
+
+} // namespace
 
 /// Loads XML content from a file.
 std::string LoadXmlFile(const char* filepath) {
@@ -32,6 +51,7 @@ int main(int argc, char* argv[]) {
 	std::unique_ptr<IGraphicsBackend> backend = CreateGraphicsBackend("windows-opengl");
 	if (!backend) {
 		std::cerr << "Error: Failed to create graphics backend" << std::endl;
+		WaitForAnyKey();
 		return 1;
 	}
 
@@ -43,12 +63,14 @@ int main(int argc, char* argv[]) {
 	GraphicsResult result = backend->Initialize(window_config);
 	if (result != GraphicsResult::Success) {
 		std::cerr << "Error: Failed to initialize graphics backend" << std::endl;
+		WaitForAnyKey();
 		return 1;
 	}
 
 	Rml::Context* rml_context = backend->GetContext();
 	if (!rml_context) {
 		std::cerr << "Error: Failed to get RmlUi context" << std::endl;
+		WaitForAnyKey();
 		return 1;
 	}
 
@@ -62,6 +84,7 @@ int main(int argc, char* argv[]) {
 	std::string xml_content = LoadXmlFile(xml_file.c_str());
 	if (xml_content.empty()) {
 		backend->Shutdown();
+		WaitForAnyKey();
 		return 1;
 	}
 
@@ -72,6 +95,7 @@ int main(int argc, char* argv[]) {
 	if (!UIXmlParser::Parse(xml_content, screen, parse_error)) {
 		std::cerr << "Parse Error at line " << parse_error.line << ": " << parse_error.message << std::endl;
 		backend->Shutdown();
+		WaitForAnyKey();
 		return 1;
 	}
 
@@ -82,6 +106,7 @@ int main(int argc, char* argv[]) {
 	if (!RmlUiTree::Build(*rml_context, *screen, ui_tree, build_error)) {
 		std::cerr << "Build Error: " << build_error.message << std::endl;
 		backend->Shutdown();
+		WaitForAnyKey();
 		return 1;
 	}
 
@@ -99,5 +124,6 @@ int main(int argc, char* argv[]) {
 	backend->Shutdown();
 
 	std::cout << "Demo completed successfully" << std::endl;
+	WaitForAnyKey();
 	return 0;
 }

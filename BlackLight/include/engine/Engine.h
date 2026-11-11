@@ -6,6 +6,7 @@
 #include "Game.h"
 #include "IGraphicsBackend.h"
 #include "Input.h"
+#include "Logger.h"
 #include "Math.h"
 #include "SpriteBatch.h"
 #include "Time.h"

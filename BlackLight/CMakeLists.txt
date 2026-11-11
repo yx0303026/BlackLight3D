@@ -6,7 +6,21 @@ if(NOT TARGET RmlUi::Core)
 		message(FATAL_ERROR "RmlUi 6.3 was not found and BLACKLIGHT_FETCH_DEPENDENCIES is OFF.")
 	endif()
 
-	set(RMLUI_FONT_ENGINE "none" CACHE STRING "RmlUi font engine" FORCE)
+	find_package(Freetype QUIET)
+	if(NOT TARGET Freetype::Freetype)
+		FetchContent_Declare(
+			freetype
+			GIT_REPOSITORY https://github.com/freetype/freetype.git
+			GIT_TAG VER-2-13-3
+			GIT_SHALLOW TRUE
+		)
+		FetchContent_MakeAvailable(freetype)
+		if(TARGET freetype AND NOT TARGET Freetype::Freetype)
+			add_library(Freetype::Freetype ALIAS freetype)
+		endif()
+	endif()
+
+	set(RMLUI_FONT_ENGINE "freetype" CACHE STRING "RmlUi font engine" FORCE)
 	set(RMLUI_PRECOMPILED_HEADERS OFF CACHE BOOL "" FORCE)
 	set(RMLUI_SAMPLES OFF CACHE BOOL "" FORCE)
 	set(RMLUI_SVG_PLUGIN OFF CACHE BOOL "" FORCE)
@@ -54,12 +68,14 @@ set(BLACKLIGHT_ENGINE_SOURCES
 	src/engine/GraphicsBackendRegistry.cpp
 	src/engine/GraphicsBackend.cpp
 	src/engine/Input.cpp
+	src/engine/Logger.cpp
 	src/engine/SpriteBatch.cpp
 	src/engine/Time.cpp
 	src/engine/backends/WindowsOpenGLBackend.cpp
 )
 
-add_library(blacklight_engine SHARED ${BLACKLIGHT_ENGINE_SOURCES})
+add_library(blacklight_engine SHARED ${BLACKLIGHT_ENGINE_SOURCES}
+	include/engine/Logger.h)
 add_library(blacklight_engine_static STATIC ${BLACKLIGHT_ENGINE_SOURCES})
 add_library(BlackLight::Engine ALIAS blacklight_engine)
 add_library(BlackLight::EngineStatic ALIAS blacklight_engine_static)
@@ -112,6 +128,15 @@ if(BLACKLIGHT_BUILD_TESTS)
 	add_executable(blacklight_rmlui_tests tests/UIXmlParserTests.cpp)
 	target_link_libraries(blacklight_rmlui_tests PRIVATE BlackLight::EngineStatic)
 	add_test(NAME blacklight_rmlui_tests COMMAND blacklight_rmlui_tests)
+
+	add_executable(blacklight_engine_tests tests/LoggerTests.cpp)
+	target_link_libraries(blacklight_engine_tests PRIVATE BlackLight::EngineStatic)
+	add_test(NAME blacklight_engine_tests COMMAND blacklight_engine_tests)
+
+	if(MSVC)
+		target_compile_options(blacklight_rmlui_tests PRIVATE /EHsc)
+		target_compile_options(blacklight_engine_tests PRIVATE /EHsc)
+	endif()
 endif()
 
 install(

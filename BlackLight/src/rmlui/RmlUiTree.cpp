@@ -129,6 +129,8 @@ bool RmlUiTree::Build(Rml::Context& context, const UIScreen& screen,
 
 	ApplyIdentifier(*built_tree->document_, screen);
 	ApplyLayout(*built_tree->document_, screen.GetLayout());
+	built_tree->document_->SetProperty("font-family", "Arial");
+	built_tree->document_->SetProperty("color", "white");
 	if (!screen.GetId().empty()) {
 		built_tree->elements_by_id_.emplace(screen.GetId(), built_tree->document_);
 	}
