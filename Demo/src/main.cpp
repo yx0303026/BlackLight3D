@@ -125,7 +125,7 @@ protected:
 	bool OnInitialize() override
 	{
 		CreateGraphics();
-			LoadUiFonts();
+		LoadUiFonts();
 
 		UI::BuiLoadError load_error;
 		if (!UI::BuiLoader::Parse(DemoUi::Find("Main.bui"), ui_document_, load_error))
@@ -134,8 +134,10 @@ protected:
 		if (!UI::BuiTree::Build(*GetContext(), *ui_document_, ui_tree_, build_error))
 			throw std::runtime_error("Unable to build the game UI: " + build_error.message);
 		ui_tree_->Show();
-		start_listener_.SetCallback([this]() { StartGame(); });
-		restart_listener_.SetCallback([this]() { RestartGame(); });
+		start_listener_.SetCallback([this]()
+									{ StartGame(); });
+		restart_listener_.SetCallback([this]()
+									  { RestartGame(); });
 		if (auto *element = ui_tree_->FindById("start_button"))
 			element->AddEventListener("click", &start_listener_);
 		if (auto *element = ui_tree_->FindById("restart_button"))
@@ -231,13 +233,12 @@ protected:
 			return;
 		camera_.SetViewport(0.0f, 0.0f, static_cast<float>(surface.width),
 							static_cast<float>(surface.height));
-		camera_.SetPosition({
-			std::clamp(player_position_.x + kPlayerWidth * 0.5f,
-					   static_cast<float>(surface.width) / camera_.GetZoom() * 0.5f,
-					   kWorldWidth - static_cast<float>(surface.width) / camera_.GetZoom() * 0.5f),
-			std::clamp(player_position_.y + kPlayerHeight * 0.5f - 90.0f,
-					   static_cast<float>(surface.height) / camera_.GetZoom() * 0.5f,
-					   kWorldHeight - static_cast<float>(surface.height) / camera_.GetZoom() * 0.5f)});
+		camera_.SetPosition({std::clamp(player_position_.x + kPlayerWidth * 0.5f,
+										static_cast<float>(surface.width) / camera_.GetZoom() * 0.5f,
+										kWorldWidth - static_cast<float>(surface.width) / camera_.GetZoom() * 0.5f),
+							 std::clamp(player_position_.y + kPlayerHeight * 0.5f - 90.0f,
+										static_cast<float>(surface.height) / camera_.GetZoom() * 0.5f,
+										kWorldHeight - static_cast<float>(surface.height) / camera_.GetZoom() * 0.5f)});
 		renderer_->SetCamera(camera_);
 
 		auto &batch = GetSpriteBatch();
@@ -257,8 +258,7 @@ protected:
 		}
 		for (const auto &coin : coins_)
 			if (!coin.collected)
-				DrawRegion("coin", {coin.position.x, coin.position.y +
-					static_cast<float>(std::sin(coin_time_ * 4.0) * 5.0)}, {40.0f, 40.0f});
+				DrawRegion("coin", {coin.position.x, coin.position.y + static_cast<float>(std::sin(coin_time_ * 4.0) * 5.0)}, {40.0f, 40.0f});
 		SpriteCommand player_command;
 		player_animation_->GetCurrentFrame().Apply(player_command);
 		player_command.position = player_position_;
@@ -329,7 +329,8 @@ private:
 		text_renderer_ = std::make_unique<TextRenderer>(*device, *renderer_, 18);
 		camera_.SetZoom(2.0f);
 		GetSpriteBatch().SetSubmitCallback(
-			[this](const std::vector<SpriteCommand> &commands) { renderer_->Submit(commands); });
+			[this](const std::vector<SpriteCommand> &commands)
+			{ renderer_->Submit(commands); });
 	}
 
 	/// Releases borrowed textures and the renderer before device loss or shutdown.
@@ -379,10 +380,7 @@ private:
 		hazards_ = {{850.0f, 993.0f, 45.0f, 32.0f},
 					{1450.0f, 733.0f, 45.0f, 32.0f},
 					{2040.0f, 473.0f, 45.0f, 32.0f}};
-		coins_ = {{{295.0f, 1190.0f}}, {{580.0f, 1060.0f}},
-				  {{875.0f, 930.0f}}, {{1180.0f, 800.0f}},
-				  {{1465.0f, 670.0f}}, {{1765.0f, 540.0f}},
-				  {{2090.0f, 410.0f}}};
+		coins_ = {{{295.0f, 1190.0f}}, {{580.0f, 1060.0f}}, {{875.0f, 930.0f}}, {{1180.0f, 800.0f}}, {{1465.0f, 670.0f}}, {{1765.0f, 540.0f}}, {{2090.0f, 410.0f}}};
 		player_position_ = {68.0f, 1420.0f - kPlayerHeight};
 		velocity_ = {};
 		grounded_ = true;
@@ -479,12 +477,10 @@ private:
 	bool TouchesHazard() const noexcept
 	{
 		return std::any_of(hazards_.begin(), hazards_.end(), [&](const Hazard &hazard)
-		{
-			return player_position_.x < hazard.x + hazard.width &&
-				   player_position_.x + kPlayerWidth > hazard.x &&
-				   player_position_.y < hazard.y + hazard.height &&
-				   player_position_.y + kPlayerHeight > hazard.y;
-		});
+						   { return player_position_.x < hazard.x + hazard.width &&
+									player_position_.x + kPlayerWidth > hazard.x &&
+									player_position_.y < hazard.y + hazard.height &&
+									player_position_.y + kPlayerHeight > hazard.y; });
 	}
 
 	/// Removes one life and respawns the player or opens the game-over menu.
@@ -511,7 +507,9 @@ private:
 		if (auto *element = ui_tree_->FindById("lives_value"))
 			element->SetInnerRML(std::to_string(lives_));
 		if (auto *element = ui_tree_->FindById("status_value"))
-			element->SetInnerRML(won_ ? "FINISHED" : paused_ ? "PAUSED" : started_ ? "PLAYING" : "READY");
+			element->SetInnerRML(won_ ? "FINISHED" : paused_ ? "PAUSED"
+												 : started_	 ? "PLAYING"
+															 : "READY");
 		const auto stats = GetFrameStats().GetSnapshot();
 		if (auto *element = ui_tree_->FindById("fps_value"))
 			element->SetInnerRML(std::to_string(static_cast<int>(stats.frames_per_second)));
@@ -560,7 +558,7 @@ private:
 	bool paused_ = false;
 	bool game_over_ = false;
 	bool won_ = false;
-		bool player_moving_ = false;
+	bool player_moving_ = false;
 };
 
 /// Starts the game and records any startup or runtime failures beside the executable.
