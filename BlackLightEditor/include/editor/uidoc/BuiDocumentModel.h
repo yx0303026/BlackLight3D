@@ -136,6 +136,9 @@ namespace BlackLight::Editor
 		/// Sets or inserts one attribute. Returns false without changing text on failure.
 		bool SetAttribute(BuiNodeId id, std::string_view name, std::string_view value,
 			BuiEditResult *result = nullptr);
+		/// Replaces the complete CSS/RCSS styles section while preserving its wrapper.
+		/// The edit is lossless for all bytes outside the `<styles>` content range.
+		bool SetStyles(std::string_view styles, BuiEditResult *result = nullptr);
 		/// Removes one attribute. Returns false without changing text on failure.
 		bool RemoveAttribute(BuiNodeId id, std::string_view name,
 			BuiEditResult *result = nullptr);

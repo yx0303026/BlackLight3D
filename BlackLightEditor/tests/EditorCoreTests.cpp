@@ -14,6 +14,7 @@
 #include "editor/project/ProjectValidator.h"
 #include "editor/project/RecentProjects.h"
 #include "editor/project/TemplateEngine.h"
+#include "editor/ui/EditorIcons.h"
 
 #include <chrono>
 #include <cstdio>
@@ -22,6 +23,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -817,6 +819,42 @@ namespace
 		CHECK(EngineSdk::IsPackage(temp.GetPath()));
 	}
 
+	void TestEditorIcons()
+	{
+		const auto &same = [](const Icons::Glyph &left, const Icons::Glyph &right)
+		{
+			return std::string_view(left.icon) == std::string_view(right.icon);
+		};
+
+		CHECK(std::string_view(Icons::Family) == "BlackLightIcons");
+		CHECK(Icons::Close.icon != nullptr && Icons::Close.fallback != nullptr);
+		CHECK(same(Icons::ForFile("Main.bui", "bui"), Icons::Layout));
+		CHECK(same(Icons::ForFile("project.blacklight", "blacklight"), Icons::Project));
+		CHECK(same(Icons::ForFile("main.cpp", "cpp"), Icons::FileCode));
+		CHECK(same(Icons::ForFile("Ecs.h", "h"), Icons::FileCode));
+		CHECK(same(Icons::ForFile("readme.md", "md"), Icons::Markdown));
+		CHECK(same(Icons::ForFile("package.json", "json"), Icons::Json));
+		CHECK(same(Icons::ForFile("CMakeLists.txt", "txt"), Icons::Tools));
+		CHECK(same(Icons::ForFile("helpers.cmake", "cmake"), Icons::Tools));
+		CHECK(same(Icons::ForFile("notes.txt", "txt"), Icons::FileText));
+		CHECK(same(Icons::ForFile("logo.png", "png"), Icons::FileMedia));
+		CHECK(same(Icons::ForFile("archive.zip", "zip"), Icons::FileZip));
+		CHECK(same(Icons::ForFile("data.bin", "bin"), Icons::File));
+		CHECK(same(Icons::ForFile("makefile", ""), Icons::File));
+
+		// Every fallback must survive RmlUi escaping as plain text without the icon font.
+		for (const Icons::Glyph *glyph : {&Icons::Close, &Icons::ChevronDown,
+			&Icons::ChevronRight, &Icons::Folder, &Icons::FolderOpen, &Icons::Layout,
+			&Icons::FileCode, &Icons::Project, &Icons::Markdown, &Icons::Json,
+			&Icons::Tools, &Icons::FileText, &Icons::FileMedia, &Icons::FileZip,
+			&Icons::File})
+		{
+			CHECK(glyph->icon != nullptr && glyph->fallback != nullptr);
+			CHECK(*glyph->icon != '\0');
+			CHECK(*glyph->fallback != '\0');
+		}
+	}
+
 } // namespace
 
 int main()
@@ -835,6 +873,7 @@ int main()
 	TestProjectGeneration();
 	TestProjectManagerAndRecentProjects();
 	TestEngineSdkPackageLayout();
+	TestEditorIcons();
 
 	std::printf("All editor core tests passed\n");
 	return 0;

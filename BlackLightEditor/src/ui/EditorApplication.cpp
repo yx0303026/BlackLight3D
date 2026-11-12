@@ -1,9 +1,12 @@
 #include "editor/ui/EditorApplication.h"
 
 #include "blacklight_editor_bui.h"
+#include "blacklight_editor_binary.h"
 #include "editor/core/Commands.h"
 #include "editor/ui/EditorIcons.h"
 #include "editor/ui/Win32Dialogs.h"
+#include "editor/uidoc/BuiStyleDeclarations.h"
+#include "editor/uidoc/BuiStyleSheet.h"
 #include "engine/Input.h"
 #include "engine/Logger.h"
 #include <RmlUi/Core.h>
@@ -15,6 +18,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstdio>
 #include <exception>
 #include <fstream>
 #include <initializer_list>
@@ -35,6 +40,15 @@ namespace BlackLight::Editor
 
 		constexpr const char *EditorVersion = "0.1.0";
 		constexpr std::size_t MaxFolderDepth = 16;
+
+		/// Formats one layout value as a density-independent pixel string.
+		std::string DpValue(float value)
+		{
+			char buffer[32];
+			const double rounded = std::round(static_cast<double>(value) * 10.0) / 10.0;
+			std::snprintf(buffer, sizeof(buffer), "%.1fdp", rounded);
+			return buffer;
+		}
 
 		/// Locates the executable directory for configuration and logs.
 		std::filesystem::path GetExecutableDirectory()
@@ -76,29 +90,14 @@ namespace BlackLight::Editor
 				   Rml::LoadFontFace((fonts / "arialbd.ttf").u8string());
 		}
 
-		/// Loads the Windows icon font under a stable family name for UI glyphs.
+		/// Registers the embedded Codicons font under a stable family name for UI glyphs.
 		bool LoadEditorIconFont()
 		{
-			wchar_t directory[MAX_PATH]{};
-			const UINT length = GetWindowsDirectoryW(directory, MAX_PATH);
-			if (!length || length >= MAX_PATH)
-				return false;
-
-			// Segoe Fluent Icons ships with Windows 11; Segoe MDL2 Assets with Windows 10.
-			const std::filesystem::path fonts = std::filesystem::path(directory) / "Fonts";
-			for (const wchar_t *file_name : {L"SegoeIcons.ttf", L"segmdl2.ttf"})
-			{
-				const std::filesystem::path path = fonts / file_name;
-				std::error_code error;
-				if (!std::filesystem::exists(path, error))
-					continue;
-				if (Rml::LoadFontFace(path.u8string(), Icons::Family,
-									  Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal))
-				{
-					return true;
-				}
-			}
-			return false;
+			return Rml::LoadFontFace(
+				Rml::Span<const Rml::byte>(EditorResources::CodiconFont,
+					EditorResources::CodiconFont_size),
+				Icons::Family, Rml::Style::FontStyle::Normal,
+				Rml::Style::FontWeight::Normal);
 		}
 
 		/// Returns the CSS class used by one log level in the Output panel.
@@ -147,26 +146,6 @@ namespace BlackLight::Editor
 								const std::filesystem::path &path)
 		{
 			return std::string(prefix) + std::string(path.u8string());
-		}
-
-		/// Returns a display glyph for a file type.
-		const char *FileGlyph(const std::filesystem::path &path, bool directory)
-		{
-			if (directory)
-				return ">";
-			const std::string extension = FileExtension(path);
-			if (extension == "bui")
-				return "UI";
-			if (extension == "blacklight")
-				return "P";
-			if (extension == "cpp" || extension == "h" || extension == "hpp" ||
-				extension == "c")
-			{
-				return "C";
-			}
-			if (extension == "md")
-				return "M";
-			return "-";
 		}
 
 	} // namespace
@@ -228,7 +207,7 @@ namespace BlackLight::Editor
 		if (!icon_font_loaded_)
 		{
 			BL_LOG(LogLevel::Warning, "Editor",
-				   "No Segoe icon font was found; tab close buttons use a text fallback");
+				   "The embedded icon font failed to load; text fallbacks are used");
 		}
 
 		const EditorTheme *theme = themes_.Find(theme_id_);
@@ -246,7 +225,8 @@ namespace BlackLight::Editor
 		}
 
 		ui_.SetClass("editor_root", "icon-font", icon_font_loaded_);
-		panels_.SetCloseGlyph(icon_font_loaded_ ? Icons::Close : Icons::CloseFallback);
+		panels_.SetCloseGlyph(icon_font_loaded_ ? Icons::Close.icon
+			: Icons::Close.fallback);
 
 		events_.SubscribeAll([this](const EditorEvent &event)
 							 { OnEditorEvent(event); });
@@ -305,6 +285,7 @@ namespace BlackLight::Editor
 		Logger::Get().ClearSinks();
 		SaveEditorConfig();
 		ui_.ClearListeners("ui_preview");
+		gizmo_.Detach();
 		preview_.Close();
 		wizard_.Shutdown(ui_);
 		menus_.Shutdown(ui_);
@@ -528,6 +509,20 @@ namespace BlackLight::Editor
 				.Shortcut(VK_DOWN, false, false, true)
 				.Enabled([this]
 						 { return HasUiSelection(); }));
+		add(CommandInfo("ui.gizmo.toggle", "Toggle Layout Gizmo", "UI",
+						[this]
+						{ return ToggleLayoutGizmo(); })
+				.Shortcut('G', true, false, true)
+				.Checked([this]
+						 { return gizmo_.IsEnabled(); })
+				.Enabled([this]
+						 { return HasActiveUiDocument(); }));
+		add(CommandInfo("ui.style.new_rule", "New Style Rule from Selection", "UI",
+						[this]
+						{ return AddUiStyleRule(); })
+				.Enabled([this]
+						 { return HasUiSelection(); }));
+
 		add(CommandInfo("view.panel.folder", "Folder Panel", "View",
 						[this]
 						{ return panels_.TogglePanel("folder"); })
@@ -538,6 +533,11 @@ namespace BlackLight::Editor
 						{ return panels_.TogglePanel("hierarchy"); })
 				.Checked([this]
 						 { return panels_.IsVisible("hierarchy"); }));
+		add(CommandInfo("view.panel.styles", "Styles Panel", "View",
+						[this]
+						{ return panels_.TogglePanel("styles"); })
+				.Checked([this]
+						 { return panels_.IsVisible("styles"); }));
 
 		add(CommandInfo("layout.reset", "Reset Layout", "View", [this]
 						{
@@ -623,6 +623,11 @@ namespace BlackLight::Editor
 		panels_.RegisterPanel({"inspector", "Inspector", DockRegion::Right, true, true,
 							   [this]
 							   { return RenderInspectorPanel(); }});
+		panels_.RegisterPanel({"styles", "Styles", DockRegion::Right, true, true,
+							   [this]
+							   { return RenderStylesPanel(); }});
+		panels_.SetActionHandler([this](std::string_view action)
+								 { HandlePanelAction(action); });
 		panels_.RegisterPanel({"output", "Output", DockRegion::Bottom, true, true,
 							   [this]
 							   { return RenderOutputPanel(); }});
@@ -648,8 +653,8 @@ namespace BlackLight::Editor
 						"ui.node.delete", "ui.node.move_up", "ui.node.move_down"});
 		menus_.AddMenu("view", "View",
 					   {"view.panel.scene", "view.panel.assets", "view.panel.inspector",
-						"view.panel.output", "view.panel.history", "", "view.panel.folder",
-						"view.panel.hierarchy", "",
+						"view.panel.styles", "view.panel.output", "view.panel.history", "",
+						"view.panel.folder", "view.panel.hierarchy", "",
 						"theme.dark", "theme.light", "theme.midnight", "", "layout.reset"});
 		menus_.AddMenu("build", "Build",
 					   {"project.validate", "", "build.configure", "build.build", "build.run"});
@@ -695,6 +700,34 @@ namespace BlackLight::Editor
 		const bool ctrl = input.IsKeyDown(VK_CONTROL);
 		const bool shift = input.IsKeyDown(VK_SHIFT);
 		const bool alt = input.IsKeyDown(VK_MENU);
+
+		// Layout gestures own the arrow keys and Escape while no text field has
+		// focus, so nudging never fights with typing in the inspector.
+		if (ui_docs_.GetActive() && gizmo_.IsEnabled())
+		{
+			Rml::Context *context = GetContext();
+			const bool editing_text = context &&
+				rmlui_dynamic_cast<Rml::ElementFormControl *>(
+					context->GetFocusElement()) != nullptr;
+			if (!editing_text)
+			{
+				if (input.WasKeyPressed(VK_ESCAPE) && gizmo_.IsDragging())
+				{
+					gizmo_.Cancel();
+					state_.SetStatus("Layout gesture cancelled");
+				}
+				const float step = shift ? 10.0f : 1.0f;
+				if (input.WasKeyPressed(VK_LEFT))
+					gizmo_.Nudge(-step, 0.0f);
+				if (input.WasKeyPressed(VK_RIGHT))
+					gizmo_.Nudge(step, 0.0f);
+				if (input.WasKeyPressed(VK_UP))
+					gizmo_.Nudge(0.0f, -step);
+				if (input.WasKeyPressed(VK_DOWN))
+					gizmo_.Nudge(0.0f, step);
+			}
+		}
+
 		for (std::uint32_t key = 1; key < 256; ++key)
 		{
 			if (!input.WasKeyPressed(key))
@@ -973,6 +1006,34 @@ namespace BlackLight::Editor
 			}
 			return;
 		}
+		if (action.rfind("style-rule:", 0) == 0)
+		{
+			styles_rule_selector_ = std::string(action.substr(11));
+			state_.SetStatus("Editing rule " + styles_rule_selector_);
+			ui_dirty_ = true;
+			return;
+		}
+		if (action == "style-rule-clear")
+		{
+			styles_rule_selector_.clear();
+			ui_dirty_ = true;
+			return;
+		}
+		if (action == "style-apply-rule")
+		{
+			ApplyUiStyleSheet();
+			return;
+		}
+		if (action == "style-apply-inline")
+		{
+			ApplyUiStyle();
+			return;
+		}
+		if (action == "style-new-rule")
+		{
+			AddUiStyleRule();
+			return;
+		}
 		if (action.rfind("folder:", 0) == 0)
 		{
 			const std::filesystem::path path =
@@ -1043,22 +1104,43 @@ namespace BlackLight::Editor
 
 	void EditorApplication::BindPanelInteractions()
 	{
-		Rml::Element *inspector = ui_.Find("panel_inspector_body");
-		if (!inspector)
-			return;
-		const auto bind_change = [this, inspector](std::string_view id,
-												   std::string_view property)
-		{
-			ui_.AddListener("ui_inspector", id, "change",
-							[this, property](Rml::Event &)
-							{
-								ApplyUiProperty(property);
-							});
-		};
 		ui_.ClearListeners("ui_inspector");
-		bind_change("ui_prop_id", "id");
-		bind_change("ui_prop_class", "class");
-		bind_change("ui_prop_text", "text");
+		if (ui_.Find("panel_inspector_body"))
+		{
+			const auto bind_change = [this](std::string_view id,
+											std::string_view property)
+			{
+				ui_.AddListener("ui_inspector", id, "change",
+								[this, property](Rml::Event &)
+								{
+									ApplyUiProperty(property);
+								});
+			};
+			bind_change("ui_prop_id", "id");
+			bind_change("ui_prop_class", "class");
+			bind_change("ui_prop_text", "text");
+		}
+
+		ui_.ClearListeners("ui_styles");
+		if (ui_.Find("panel_styles_body"))
+		{
+			ui_.AddListener("ui_styles", "ui_style_inline", "change",
+							[this](Rml::Event &) { ApplyUiStyle(); });
+			ui_.AddListener("ui_styles", "ui_style_sheet", "change",
+							[this](Rml::Event &) { ApplyUiStyleSheet(); });
+			ui_.AddListener("ui_styles", "ui_style_rule_body", "change",
+							[this](Rml::Event &) { ApplyUiStyleSheet(); });
+			static constexpr const char *events[] = {"click", "change", "mouseover"};
+			for (const char *event_name : events)
+			{
+				ui_.AddListener("ui_styles",
+								std::string("ui_event_") + event_name, "change",
+								[this, event_name](Rml::Event &)
+								{
+									ApplyUiEventHandler(event_name);
+								});
+			}
+		}
 
 		Rml::Element *hierarchy = ui_.Find("panel_hierarchy_body");
 		ui_.ClearListeners("ui_hierarchy_drag");
@@ -1200,6 +1282,7 @@ namespace BlackLight::Editor
 			if (preview_.IsOpen())
 			{
 				ui_.ClearListeners("ui_preview");
+				gizmo_.Detach();
 				preview_.Close();
 			}
 			preview_revision_ = 0;
@@ -1219,6 +1302,7 @@ namespace BlackLight::Editor
 			{
 				BL_LOG(LogLevel::Error, "UI", "Preview failed: " + error);
 				state_.SetStatus("UI preview failed: " + error);
+				gizmo_.Detach();
 				preview_.Close();
 				preview_revision_ = 0;
 				preview_tab_id_.clear();
@@ -1229,12 +1313,424 @@ namespace BlackLight::Editor
 			Rml::ElementDocument *document = preview_.GetDocument();
 			if (document)
 			{
-				ui_.AddListener("ui_preview", document, "click",
-								[this](Rml::Event &event)
-								{ preview_.HandleClick(event); });
+				gizmo_.Attach(document);
+				gizmo_.SetSelectionPath(tab->selection_path);
+				BindPreviewInteractions();
 			}
 		}
 		preview_.AnchorTo(ui_.Find("viewport_preview_frame"));
+		if (gizmo_.IsEnabled() && !gizmo_.IsDragging())
+			gizmo_.Update();
+	}
+
+	void EditorApplication::BindPreviewInteractions()
+	{
+		ui_.ClearListeners("ui_preview");
+		Rml::ElementDocument *document = preview_.GetDocument();
+		if (!document)
+			return;
+
+		ui_.AddListener("ui_preview", document, "click",
+						[this](Rml::Event &event)
+						{
+							// A completed gizmo gesture already applied its edit; the
+							// synthesized click must not also reset the selection.
+							if (gizmo_.ConsumeClickSuppression())
+							{
+								event.StopPropagation();
+								return;
+							}
+							preview_.HandleClick(event);
+						});
+		ui_.AddListener("ui_preview", document, "mousedown", [this](Rml::Event &event)
+						{ gizmo_.HandleMouseDown(event); });
+		ui_.AddListener("ui_preview", document, "mousemove", [this](Rml::Event &event)
+						{ gizmo_.HandleMouseMove(event); });
+		ui_.AddListener("ui_preview", document, "mouseup", [this](Rml::Event &event)
+						{ gizmo_.HandleMouseUp(event); });
+
+		// Bind the on-* attributes authored in the document so preview interaction
+		// reports exactly which handler the runtime would call.
+		static constexpr const char *events[] = {"click", "change", "mouseover",
+												 "mousedown", "mouseup"};
+		for (const char *event_name : events)
+		{
+			const std::string attribute = "on-" + std::string(event_name);
+			ui_.AddListener("ui_preview", document, event_name,
+							[this, attribute](Rml::Event &event)
+							{
+								Rml::Element *document_element = preview_.GetDocument();
+								if (!document_element)
+									return;
+								const std::string handler = EditorUi::FindAttribute(
+									event.GetTargetElement(), document_element, attribute);
+								if (handler.empty())
+									return;
+								const std::string path = EditorUi::FindAttribute(
+									event.GetTargetElement(), document_element,
+									"data-bl-node");
+								BL_LOG(LogLevel::Info, "UI",
+									   "Event " + attribute + " -> " + handler +
+										   (path.empty() ? std::string() : " at " + path));
+								state_.SetStatus("Event " + attribute + ": " + handler);
+								ui_dirty_ = true;
+							});
+		}
+	}
+
+	bool EditorApplication::ToggleLayoutGizmo()
+	{
+		const bool enabled = !gizmo_.IsEnabled();
+		gizmo_.SetEnabled(enabled);
+		state_.SetStatus(enabled ? "Layout gizmo enabled" : "Layout gizmo disabled");
+		ui_dirty_ = true;
+		return true;
+	}
+
+	void EditorApplication::ApplyGizmoGeometry(std::string_view path,
+		const BuiGizmoGeometry &geometry)
+	{
+		UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab)
+			return;
+		const BuiNodeId id = tab->model.NodeAtPath(path);
+		const BuiNode *node = tab->model.Find(id);
+		if (!node || node->type != BuiNodeType::Element)
+			return;
+
+		// A gizmo gesture always expresses the node as an absolutely positioned
+		// rectangle. Merging into the authored inline style keeps unrelated
+		// properties (colors, fonts, borders) that the preview already shows.
+		std::string style;
+		if (const BuiAttribute *existing = node->FindAttribute("style"))
+			style = existing->value;
+		style = SetStyleDeclarationValue(style, "position", "absolute");
+		style = SetStyleDeclarationValue(style, "left", DpValue(geometry.x));
+		style = SetStyleDeclarationValue(style, "top", DpValue(geometry.y));
+		style = SetStyleDeclarationValue(style, "width", DpValue(geometry.width));
+		style = SetStyleDeclarationValue(style, "height", DpValue(geometry.height));
+
+		const bool applied = ui_docs_.ApplyEdit(*tab, "Layout gizmo edit",
+												[id, style](BuiDocumentModel &model,
+															BuiEditResult &result)
+												{
+													return model.SetAttribute(id, "style", style,
+																			  &result);
+												});
+		if (applied)
+		{
+			state_.SetStatus("Updated layout of " + std::string(path));
+			events_.Emit({EventType::UiDocumentModified, tab->id, "Layout gizmo edit"});
+			ui_dirty_ = true;
+		}
+	}
+
+	bool EditorApplication::NudgeUiSelection(int delta_x, int delta_y)
+	{
+		if (!gizmo_.IsEnabled())
+			return false;
+		const float step = 1.0f;
+		return gizmo_.Nudge(static_cast<float>(delta_x) * step,
+							static_cast<float>(delta_y) * step);
+	}
+
+	void EditorApplication::ApplyUiStyle()
+	{
+		UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab)
+			return;
+		Rml::ElementFormControl *control = rmlui_dynamic_cast<Rml::ElementFormControl *>(
+			ui_.Find("ui_style_inline"));
+		if (!control)
+			return;
+		const std::string value = control->GetValue();
+		const BuiNodeId id = tab->model.NodeAtPath(tab->selection_path);
+		if (id == InvalidBuiNode)
+			return;
+
+		const bool applied = ui_docs_.ApplyEdit(*tab, "Set inline style",
+												[id, value](BuiDocumentModel &model,
+															BuiEditResult &result)
+												{
+													if (value.empty())
+														return model.RemoveAttribute(id, "style", &result);
+													return model.SetAttribute(id, "style", value, &result);
+												});
+		if (applied)
+		{
+			state_.SetStatus("Updated inline style");
+			events_.Emit({EventType::UiDocumentModified, tab->id, "Set inline style"});
+			ui_dirty_ = true;
+		}
+	}
+
+	void EditorApplication::ApplyUiStyleSheet()
+	{
+		UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab)
+			return;
+
+		std::string styles = tab->model.GetStyles();
+		bool changed = false;
+		const auto read = [this](std::string_view id) -> std::string
+		{
+			Rml::ElementFormControl *control = rmlui_dynamic_cast<Rml::ElementFormControl *>(
+				ui_.Find(std::string(id)));
+			return control ? control->GetValue() : std::string();
+		};
+
+		if (!styles_rule_selector_.empty())
+		{
+			const std::vector<BuiStyleRule> rules = ParseStyleSheet(styles);
+			for (const BuiStyleRule &rule : rules)
+			{
+				if (rule.selector != styles_rule_selector_)
+					continue;
+				const std::string body = read("ui_style_rule_body");
+				if (!body.empty())
+				{
+					styles = SetRuleDeclarations(styles, rule, body);
+					changed = true;
+				}
+				break;
+			}
+		}
+		else
+		{
+			const std::string sheet = read("ui_style_sheet");
+			if (!sheet.empty() && sheet != styles)
+			{
+				styles = sheet;
+				changed = true;
+			}
+		}
+		if (!changed)
+			return;
+
+		const bool applied = ui_docs_.ApplyEdit(*tab, "Edit stylesheet",
+												[styles](BuiDocumentModel &model,
+														 BuiEditResult &result)
+												{
+													return model.SetStyles(styles, &result);
+												});
+		if (applied)
+		{
+			state_.SetStatus("Updated stylesheet");
+			events_.Emit({EventType::UiDocumentModified, tab->id, "Edit stylesheet"});
+			ui_dirty_ = true;
+		}
+	}
+
+	void EditorApplication::ApplyUiDeclaration(std::string_view field,
+		std::string_view property)
+	{
+		UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab)
+			return;
+		Rml::ElementFormControl *control = rmlui_dynamic_cast<Rml::ElementFormControl *>(
+			ui_.Find(std::string(field)));
+		if (!control)
+			return;
+		const std::string value = control->GetValue();
+		const BuiNodeId id = tab->model.NodeAtPath(tab->selection_path);
+		const BuiNode *node = tab->model.Find(id);
+		if (!node || node->type != BuiNodeType::Element)
+			return;
+
+		std::string style;
+		if (const BuiAttribute *existing = node->FindAttribute("style"))
+			style = existing->value;
+		if (value.empty())
+			style = RemoveStyleDeclaration(style, property);
+		else
+			style = SetStyleDeclarationValue(style, property, value);
+
+		const bool applied = ui_docs_.ApplyEdit(*tab,
+												"Set " + std::string(property),
+												[id, style](BuiDocumentModel &model,
+															BuiEditResult &result)
+												{
+													if (style.empty())
+														return model.RemoveAttribute(id, "style", &result);
+													return model.SetAttribute(id, "style", style, &result);
+												});
+		if (applied)
+		{
+			state_.SetStatus("Set " + std::string(property));
+			events_.Emit({EventType::UiDocumentModified, tab->id,
+						  "Set " + std::string(property)});
+			ui_dirty_ = true;
+		}
+	}
+
+	void EditorApplication::ApplyUiEventHandler(std::string_view event_name)
+	{
+		UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab)
+			return;
+		Rml::ElementFormControl *control = rmlui_dynamic_cast<Rml::ElementFormControl *>(
+			ui_.Find(std::string("ui_event_") + std::string(event_name)));
+		if (!control)
+			return;
+		const std::string value = control->GetValue();
+		const BuiNodeId id = tab->model.NodeAtPath(tab->selection_path);
+		const BuiNode *node = tab->model.Find(id);
+		if (!node || node->type != BuiNodeType::Element)
+			return;
+
+		const std::string attribute = "on-" + std::string(event_name);
+		const bool applied = ui_docs_.ApplyEdit(*tab, "Bind " + attribute,
+												[id, attribute, value](BuiDocumentModel &model,
+																	   BuiEditResult &result)
+												{
+													if (value.empty())
+														return model.RemoveAttribute(id, attribute, &result);
+													return model.SetAttribute(id, attribute, value, &result);
+												});
+		if (applied)
+		{
+			state_.SetStatus(value.empty() ? "Cleared " + attribute
+										   : "Bound " + attribute + " to " + value);
+			events_.Emit({EventType::UiDocumentModified, tab->id, "Bind " + attribute});
+			ui_dirty_ = true;
+		}
+	}
+
+	bool EditorApplication::AddUiStyleRule()
+	{
+		UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab)
+			return false;
+		const BuiNodeId id = tab->model.NodeAtPath(tab->selection_path);
+		const BuiNode *node = tab->model.Find(id);
+		if (!node)
+			return false;
+		const std::string selector = SelectorOfNode(*node);
+		if (selector.empty())
+		{
+			state_.SetStatus("Set an id or class before creating a style rule");
+			ui_dirty_ = true;
+			return false;
+		}
+
+		const std::string styles =
+			AppendStyleRule(tab->model.GetStyles(), selector,
+							"position: absolute; left: 0dp; top: 0dp;");
+		const bool applied = ui_docs_.ApplyEdit(*tab, "Add style rule",
+												[styles](BuiDocumentModel &model,
+														 BuiEditResult &result)
+												{
+													return model.SetStyles(styles, &result);
+												});
+		if (applied)
+		{
+			styles_rule_selector_ = selector;
+			state_.SetStatus("Added style rule " + selector);
+			events_.Emit({EventType::UiDocumentModified, tab->id, "Add style rule"});
+			ui_dirty_ = true;
+		}
+		return applied;
+	}
+
+	std::string EditorApplication::RenderStylesPanel() const
+	{
+		const UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab)
+			return "<div class=\"empty\">Open a .bui document to edit its styles.</div>";
+
+		const auto textarea = [](std::string_view id, std::string_view text,
+								 int rows)
+		{
+			return "<textarea id=\"" + std::string(id) +
+				   "\" class=\"ui-input ui-textarea\" rows=\"" +
+				   std::to_string(rows) + "\">" + EditorUi::Escape(text) +
+				   "</textarea>";
+		};
+		const auto action = [](std::string_view label, std::string_view command)
+		{
+			return "<span class=\"palette-button\" data-action=\"" +
+				   std::string(command) + "\">" + std::string(label) + "</span>";
+		};
+
+		std::string html;
+		const BuiNode *node = ui_docs_.GetSelectedNode(*tab);
+		if (node && node->type == BuiNodeType::Element)
+		{
+			const BuiAttribute *style = node->FindAttribute("style");
+			html += "<div class=\"inspector-section\">Inline Style</div>";
+			html += "<div class=\"panel-hint\">" + EditorUi::Escape(
+														 node->tag) +
+					" " + EditorUi::Escape(tab->selection_path) + "</div>";
+			html += textarea("ui_style_inline", style ? style->value : std::string(), 4);
+			html += "<div class=\"ui-palette\">" + action("Apply Style", "style-apply-inline") +
+					"</div>";
+
+			html += "<div class=\"inspector-section\">Events</div>";
+			static constexpr const char *events[] = {"click", "change", "mouseover"};
+			for (const char *event_name : events)
+			{
+				const BuiAttribute *binding =
+					node->FindAttribute("on-" + std::string(event_name));
+				html += "<div class=\"ui-property\"><span class=\"inspector-label\">on-" +
+						std::string(event_name) +
+						"</span><input id=\"ui_event_" + std::string(event_name) +
+						"\" class=\"ui-input\" type=\"text\" value=\"" +
+						EditorUi::Escape(binding ? binding->value : std::string()) +
+						"\"/></div>";
+			}
+			html += "<div class=\"panel-hint\">Event bindings are stored as on-* "
+					"attributes and logged by the preview when they fire.</div>";
+		}
+
+		const std::string styles = tab->model.GetStyles();
+		const std::vector<BuiStyleRule> rules = ParseStyleSheet(styles);
+		html += "<div class=\"inspector-section\">Style Rules</div>";
+		if (rules.empty())
+			html += "<div class=\"panel-hint\">This document has no style rules yet.</div>";
+		for (const BuiStyleRule &rule : rules)
+		{
+			if (rule.at_rule)
+				continue;
+			html += "<div class=\"tree-row style-rule-row";
+			if (rule.selector == styles_rule_selector_)
+				html += " selected";
+			html += "\" data-action=\"style-rule:" + EditorUi::Escape(rule.selector) + "\">";
+			html += "<span class=\"tree-tag\">" + EditorUi::Escape(rule.selector) + "</span>";
+			html += "<span class=\"tree-class\">" +
+					std::to_string(rule.declarations.size()) + "</span></div>";
+		}
+
+		const BuiStyleRule *selected_rule = nullptr;
+		for (const BuiStyleRule &rule : rules)
+		{
+			if (rule.selector == styles_rule_selector_ && !rule.at_rule)
+			{
+				selected_rule = &rule;
+				break;
+			}
+		}
+
+		html += "<div class=\"inspector-section\">";
+		html += selected_rule ? "Rule " + EditorUi::Escape(selected_rule->selector)
+							  : std::string("Stylesheet");
+		html += "</div>";
+		if (selected_rule)
+		{
+			html += textarea("ui_style_rule_body",
+							 std::string_view(styles).substr(selected_rule->body_range.begin,
+															 selected_rule->body_range.Size()),
+							 5);
+			html += "<div class=\"ui-palette\">" +
+					action("Apply Rule", "style-apply-rule") +
+					action("Back to Sheet", "style-rule-clear") + "</div>";
+		}
+		else
+		{
+			html += textarea("ui_style_sheet", styles, 8);
+			html += "<div class=\"ui-palette\">" +
+					action("Apply Sheet", "style-apply-rule") + "</div>";
+		}
+		return html;
 	}
 
 	std::string EditorApplication::RenderScenePanel() const
@@ -1332,6 +1828,21 @@ namespace BlackLight::Editor
 				const bool is_directory = entry.is_directory(entry_error);
 				const std::filesystem::path path = entry.path();
 				const bool expanded = is_directory && folder_expanded_.count(path) != 0;
+				const std::string file_name = path.filename().u8string();
+				const Icons::Glyph &glyph = is_directory
+						? (expanded ? Icons::FolderOpen : Icons::Folder)
+						: Icons::ForFile(file_name, FileExtension(path));
+				const char *glyph_text = icon_font_loaded_ ? glyph.icon : glyph.fallback;
+				const char *toggle_text = "";
+				if (is_directory)
+				{
+					toggle_text = icon_font_loaded_
+						? (expanded ? Icons::ChevronDown.icon : Icons::ChevronRight.icon)
+						: (expanded ? "v" : ">");
+					// Without the icon font the toggle carries the directory state.
+					if (!icon_font_loaded_)
+						glyph_text = "";
+				}
 				const std::string indent = std::to_string(4 + depth * 14);
 				html += "<div class=\"folder-row\"";
 				if (is_directory)
@@ -1355,10 +1866,12 @@ namespace BlackLight::Editor
 							EditorUi::Escape(path.u8string()) + "\"";
 				}
 				html += " style=\"padding-left: " + indent + "dp;\">";
-				html += "<span class=\"folder-glyph\">";
-				html += is_directory ? (expanded ? "v" : ">") : FileGlyph(path, false);
+				html += "<span class=\"folder-toggle\">";
+				html += toggle_text;
+				html += "</span><span class=\"folder-glyph\">";
+				html += glyph_text;
 				html += "</span><span class=\"folder-name\">" +
-						EditorUi::Escape(path.filename().u8string()) + "</span>";
+						EditorUi::Escape(file_name) + "</span>";
 				if (!is_directory)
 				{
 					html += "<span class=\"kind\">" +
@@ -1849,6 +2362,7 @@ namespace BlackLight::Editor
 	{
 		if (!ui_docs_.SetSelection(path))
 			return;
+		gizmo_.SetSelectionPath(path);
 		const BuiNode *node = ui_docs_.GetSelectedNode();
 		state_.SetStatus(node
 							 ? "UI selection: " + (node->type == BuiNodeType::Text

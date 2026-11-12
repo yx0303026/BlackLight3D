@@ -399,18 +399,22 @@
 
     .inspector-section {
       display: block;
-      margin: 8dp 0 4dp 0;
-      padding-bottom: 4dp;
-      color: @accent;
-      font-size: 11dp;
+      margin: 10dp 0 4dp 0;
+      padding-bottom: 3dp;
+      color: @text-muted;
+      font-size: 10dp;
+      font-weight: bold;
+      letter-spacing: 0.6dp;
+      text-transform: uppercase;
       border-bottom: 1dp @border;
     }
 
     .inspector-row {
       display: flex;
       flex-direction: row;
+      align-items: center;
       gap: 8dp;
-      padding: 2dp 0;
+      padding: 3dp 0;
     }
 
     .inspector-label {
@@ -606,12 +610,19 @@
       overflow: hidden;
     }
 
-    .tree-toggle {
+    .tree-toggle, .folder-toggle {
       display: block;
       width: 12dp;
       flex-shrink: 0;
       color: @text-muted;
       font-size: 10dp;
+    }
+
+    .icon-font .folder-toggle, .icon-font .folder-glyph {
+      font-family: BlackLightIcons;
+      font-size: 15dp;
+      font-weight: normal;
+      line-height: 20dp;
     }
 
     .tree-tag {
@@ -709,25 +720,80 @@
       display: flex;
       flex-direction: row;
       align-items: center;
-      gap: 6dp;
+      gap: 8dp;
       padding: 2dp 0;
     }
 
     .ui-input {
       display: block;
       flex: 1 1 auto;
-      height: 24dp;
-      padding: 3dp 6dp;
+      box-sizing: border-box;
+      height: 22dp;
+      padding: 0 8dp;
       background-color: @bg;
       color: @text;
-      border: 1dp @border-strong;
-      border-radius: 3dp;
+      border: 1dp @border;
+      border-radius: 2dp;
+      caret-color: @text;
       font-family: Arial;
       font-size: 11dp;
+      line-height: 20dp;
+    }
+
+    .ui-input:hover {
+      border: 1dp @border-strong;
     }
 
     .ui-input:focus {
       border: 1dp @accent;
+      background-color: @surface-alt;
+    }
+
+    /* Text selection inside form controls. */
+    input.selection {
+      background-color: @selection;
+      color: @text;
+    }
+
+    /* Multi-line CSS editors in the Styles panel. */
+    .ui-textarea {
+      display: block;
+      width: 100%;
+      flex: 0 0 auto;
+      height: auto;
+      padding: 4dp 8dp;
+      margin-bottom: 4dp;
+      font-family: "Consolas";
+      font-size: 11dp;
+      line-height: 16dp;
+      overflow-y: auto;
+      white-space: pre;
+    }
+
+    textarea.selection {
+      background-color: @selection;
+      color: @text;
+    }
+
+    /* One selectable CSS rule in the Styles panel. */
+    .style-rule-row {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6dp;
+      padding: 2dp 6dp;
+      cursor: pointer;
+      border-bottom: 1dp @border;
+    }
+
+    .style-rule-row:hover {
+      background-color: @hover;
+    }
+
+    .style-rule-row.selected {
+      background-color: @selection;
+      border-left: 2dp @accent;
     }
 
     /* Live .bui preview canvas */
@@ -885,29 +951,33 @@
       display: block;
       box-sizing: border-box;
       width: 660dp;
-      height: 32dp;
-      padding: 6dp 8dp;
+      height: 28dp;
+      padding: 0 8dp;
       background-color: @bg;
-      border: 1dp @border-strong;
-      border-radius: 4dp;
+      border: 1dp @border;
+      border-radius: 2dp;
       color: @text;
+      caret-color: @text;
       font-family: "Segoe UI";
       font-size: 12dp;
-      line-height: 18dp;
+      line-height: 26dp;
+    }
+
+    .wizard-input:hover {
+      border: 1dp @border-strong;
     }
 
     .wizard-input:focus {
       border: 1dp @accent;
+      background-color: @surface-alt;
     }
 
     .wizard-input-half {
       width: 326dp;
-      height: 32dp;
     }
 
     .wizard-input-location {
       width: 560dp;
-      height: 32dp;
     }
 
     .wizard-browse {

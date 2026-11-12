@@ -9,6 +9,7 @@
 #include "editor/project/ProjectManager.h"
 #include "editor/project/RecentProjects.h"
 #include "editor/uidoc/UiDocumentSessions.h"
+#include "editor/ui/BuiGizmo.h"
 #include "editor/ui/BuiPreview.h"
 #include "editor/ui/EditorMenu.h"
 #include "editor/ui/EditorUi.h"
@@ -109,11 +110,21 @@ namespace BlackLight::Editor
 		void ToggleUiNode(std::string_view path);
 		void UpdateUiPreview(bool force = false);
 		void ApplyUiProperty(std::string_view property);
+		void ApplyUiStyle();
+		void ApplyUiStyleSheet();
+		void ApplyUiDeclaration(std::string_view field, std::string_view name);
+		void ApplyUiEventHandler(std::string_view event_name);
+		bool AddUiStyleRule();
+		bool ToggleLayoutGizmo();
+		void ApplyGizmoGeometry(std::string_view path, const BuiGizmoGeometry &geometry);
 		void BindPanelInteractions();
+		void BindPreviewInteractions();
+		bool NudgeUiSelection(int delta_x, int delta_y);
 		void BeginUiDrag(std::string_view path);
 		void UpdateUiDrag(Rml::Event &event);
 		void EndUiDrag(Rml::Event &event);
 		void ApplyUiDrop(std::string_view source, std::string_view target, int mode);
+		std::string RenderStylesPanel() const;
 
 		void HandlePanelAction(std::string_view action);
 		void HandleToolbarClick(Rml::Event &event);
@@ -142,6 +153,7 @@ namespace BlackLight::Editor
 		ProjectManager project_;
 		UiDocumentSessions ui_docs_;
 		BuiPreview preview_;
+		BuiGizmo gizmo_;
 		RecentProjects recent_projects_;
 		ProjectWizard wizard_;
 		LogBuffer logs_;
@@ -155,6 +167,8 @@ namespace BlackLight::Editor
 		Rml::Element *ui_drag_over_ = nullptr;
 		std::set<std::filesystem::path> folder_expanded_;
 		std::set<std::string> ui_tree_expanded_;
+		std::string styles_rule_selector_;
+		bool nudge_selection_active_ = false;
 		bool icon_font_loaded_ = false;
 		bool ui_dirty_ = true;
 	};

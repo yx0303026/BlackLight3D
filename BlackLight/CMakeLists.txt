@@ -69,6 +69,7 @@ endfunction()
 
 blacklight_configure_ui_dependencies()
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/BlackLightEmbedBui.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/BlackLightEmbedBinary.cmake")
 
 # Use the official adapters matching the pinned core, including for installed packages.
 set(BLACKLIGHT_RMLUI_BACKENDS_DIRECTORY "${rmlui_SOURCE_DIR}/Backends" CACHE PATH

@@ -831,6 +831,25 @@ namespace BlackLight::Editor
 		return true;
 	}
 
+	bool BuiDocumentModel::SetStyles(std::string_view styles, BuiEditResult *result)
+	{
+		if (!styles_section_.valid)
+			return false;
+
+		const std::string old_text = text_;
+		text_.replace(styles_section_.content.begin, styles_section_.content.Size(),
+			std::string(styles));
+		RefreshSections();
+		Rebuild();
+		++revision_;
+		if (result)
+		{
+			result->old_text = old_text;
+			result->new_text = text_;
+		}
+		return true;
+	}
+
 	bool BuiDocumentModel::RemoveAttribute(BuiNodeId id, std::string_view name,
 		BuiEditResult *result)
 	{

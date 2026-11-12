@@ -104,11 +104,14 @@ path mapping, per-tab undo, save, save-as, and close behavior without RmlUi.
   closed from the tab bar, toggled from View, and restored with **Reset Layout**.
 - Themes: **Dark**, **Light**, and **Midnight**. The `.bui` stylesheet uses
   `@token` colors that are replaced at load time and when the theme changes.
-- Icons: UI glyphs come from the Windows icon font library — **Segoe Fluent
-  Icons** on Windows 11 with **Segoe MDL2 Assets** as the fallback. Both are
-  registered as the `BlackLightIcons` family, and glyph codepoints live in
-  [`include/editor/ui/EditorIcons.h`](include/editor/ui/EditorIcons.h). Tab close
-  buttons fall back to a text glyph when no icon font is available.
+- Icons: UI glyphs come from the embedded **VS Code Codicons** icon font
+  (`fonts/codicon.ttf`, version `0.0.46-24`; see
+  [`fonts/README.md`](fonts/README.md) for provenance and licensing). It is
+  registered as the `BlackLightIcons` family, and glyph codepoints plus text
+  fallbacks live in
+  [`include/editor/ui/EditorIcons.h`](include/editor/ui/EditorIcons.h), which also
+  maps file names and extensions to file-type icons for the Folder panel. Text
+  fallbacks are used when the icon font fails to load.
 
 ## Shortcuts
 
@@ -241,6 +244,39 @@ model's complete source text as UTF-8, preserving the original `<styles>` block,
 comments, whitespace, and line endings outside the edited ranges. New child lines
 use the document's existing LF or CRLF convention.
 
+### Layout gizmo
+
+With a `.bui` document open, the Viewport carries a 2D gizmo for the selected
+element: drag anywhere inside the rectangle to move it, or grab one of the eight
+edge and corner handles to resize. `Ctrl+G` toggles the gizmo. A gesture is
+transient while the pointer moves; releasing commits exactly one `style` attribute
+edit, so one drag is one undo step.
+
+The gizmo reports geometry relative to the element's offset parent, which is the
+coordinate space `position: absolute` resolves in, so the committed `left` and
+`top` match what the author sees. Values are written in `dp` and merged into the
+existing inline style, preserving unrelated declarations. The preview is converted
+to absolute positioning on the first gesture, or earlier through the Styles panel.
+Arrow keys nudge the selection by 1dp (10dp with Shift), and Escape cancels an
+active drag while restoring the authored style.
+
+### Styles panel
+
+The **Styles** panel edits both halves of the stylesheet:
+
+- **Inline Style** — the `style` attribute of the selected element, as raw CSS.
+- **Events** — `on-click`, `on-change`, and `on-mouseover` bindings, stored as
+  ordinary attributes. The preview dispatches them during interaction and logs the
+  handler name, so a binding can be verified without leaving the editor.
+- **Style Rules** — every rule in `<styles>` with its declaration count. Select a
+  rule to edit its body in place; **New Style Rule from Selection** appends a rule
+  named after the element's `id` or first class.
+
+Rule edits rewrite only the matched declaration block, so selectors, comments, and
+the surrounding formatting stay byte-identical. Selectors supported by the matcher
+are tag, `.class`, `#id`, and compounds of those three; descendant, child, and
+pseudo selectors are listed but left to the full stylesheet editor.
+
 ## Configuration
 
 Settings are stored in `%APPDATA%\BlackLight3D\editor.ini`, falling back to the
@@ -260,5 +296,5 @@ This stage intentionally leaves the asset pipeline, scene editing, general
 property editors, build integration, and runtime preview to later stages. The UI
 editor is the first real document editor: it covers the folder browser, lossless
 `.bui` model, multi-tab sessions, hierarchy edits, `id`/`class`/text properties,
-Viewport preview, selection linking, and save/save-as. CSS editing, event binding,
-and transform gizmos are deferred to 3.0.x.
+Viewport preview, selection linking, save/save-as, the layout gizmo, the CSS style
+editor, and preview event bindings. Scene transform gizmos remain part of stage 5.

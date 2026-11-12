@@ -67,6 +67,7 @@ BlackLight可视化项目编辑器，基于BlackLightUI框架，目标为类似V
 
 ### 3.0 UI编辑器
 - [x] 设计左侧面板，新增除Scene、Assets外的Folder视图，显示类似VSCode的树状可折叠文件视图。
+- [x] 引入 Codicons 图标库（字体嵌入 + `EditorIcons.h` 图标映射），Folder 面板显示文件类型/目录图标。
 - [x] 设计 UI 项目目录规范（`ui/`，默认入口 `Main.bui`）
 - [x] 支持 UI 文档创建、打开、关闭和另存为
 - [x] 建立 `.bui` 文档模型（样式、布局树、节点属性）
@@ -75,12 +76,23 @@ BlackLight可视化项目编辑器，基于BlackLightUI框架，目标为类似V
 - [x] 提供基础属性编辑（id、class、text）
 - [x] 在 Viewport 中实时预览当前 UI 文档
 - [x] 保存修改后的 `.bui` 文件
-- [ ] 支持 Gizmo 化的拖拽布局、尺寸和定位编辑（3.0.x）
-- [ ] 支持 CSS 样式专用编辑器和控件事件绑定（3.0.x）
+- [x] 支持 Gizmo 化的拖拽布局、尺寸和定位编辑（3.0.x）
+- [x] 支持 CSS 样式专用编辑器和控件事件绑定（3.0.x）
 
 **3.0 实现说明**：核心闭环见 `include/editor/uidoc`、
 `src/uidoc`、`ui/BuiPreview.*` 和 `tests/BuiDocumentTests.cpp`。
 层级树支持拖拽改父级与兄弟顺序，保存保持原文局部改写。
+
+**3.0.x 布局 Gizmo**：`ui/BuiGizmo.*` 提供八向缩放与移动手柄，几何量相对
+元素 offset parent（即 `position: absolute` 的解析坐标系），以 `dp` 合并写入
+`style` 属性，一次手势一次撤销；方向键微调（Shift ×10），Esc 取消并还原。
+拖拽纯几何逻辑在 `ui/BuiGizmoMath.h`，由 Bui 文档测试覆盖。
+
+**3.0.x 样式与事件**：`uidoc/BuiStyleDeclarations.*` 解析声明列表并保留字节，
+`uidoc/BuiStyleSheet.*` 按规则切分 `<styles>` 并支持局部改写；`BuiDocumentModel::SetStyles`
+提供无损整体替换。Styles 面板可编辑内联样式、规则体、整表，并以
+`on-click`/`on-change`/`on-mouseover` 属性绑定控件事件，预览会实际派发并记录
+处理函数名。
 
 ### 3.1 场景编辑器
 - [ ] 设计场景树结构和数据模型

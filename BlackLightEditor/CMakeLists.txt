@@ -16,6 +16,8 @@ add_library(blacklight_editor_core STATIC
 	src/project/RecentProjects.cpp
 	src/project/TemplateEngine.cpp
 	src/uidoc/BuiDocumentModel.cpp
+	src/uidoc/BuiStyleDeclarations.cpp
+	src/uidoc/BuiStyleSheet.cpp
 	src/uidoc/UiDocumentSessions.cpp
 )
 
@@ -30,6 +32,7 @@ set_target_properties(blacklight_editor_core PROPERTIES
 )
 
 add_executable(blacklight_editor
+	src/ui/BuiGizmo.cpp
 	src/ui/BuiPreview.cpp
 	src/ui/EditorApplication.cpp
 	src/ui/EditorMenu.cpp
@@ -77,6 +80,14 @@ blacklight_embed_bui(blacklight_editor
 	ROOT "${CMAKE_CURRENT_SOURCE_DIR}/ui"
 	NAMESPACE EditorResources
 	FILES Editor.bui
+)
+
+# The Codicons font (fonts/README.md) is embedded and registered as BlackLightIcons.
+blacklight_embed_binary(blacklight_editor
+	ROOT "${CMAKE_CURRENT_SOURCE_DIR}/fonts"
+	NAMESPACE EditorResources
+	NAME CodiconFont
+	FILE codicon.ttf
 )
 
 if(BLACKLIGHT_BUILD_TESTS)
