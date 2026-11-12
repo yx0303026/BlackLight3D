@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <vector>
 
 namespace BlackLight::Engine::Rendering
 {
@@ -14,6 +13,7 @@ namespace BlackLight::Engine::Rendering
 	{
 		class OpenGLDevice;
 		class Direct3D11Device;
+		class DeviceLifetime;
 	}
 
 	/// Describes formats supported by the normalized resource API.
@@ -26,7 +26,24 @@ namespace BlackLight::Engine::Rendering
 		RG32Float,
 		RGB32Float,
 		RGBA32Float,
-		D24S8
+		D24S8,
+		R16Uint,
+		R32Uint
+	};
+
+	/// Selects how texture samples are filtered and addressed.
+	enum class TextureFilter
+	{
+		Nearest,
+		Linear
+	};
+
+	/// Selects how coordinates outside the normalized texture range are handled.
+	enum class TextureAddressMode
+	{
+		Clamp,
+		Repeat,
+		Mirror
 	};
 
 	/// Describes a single vertex attribute in the interleaved vertex buffer.
@@ -36,6 +53,8 @@ namespace BlackLight::Engine::Rendering
 		std::uint32_t component_count = 0;
 		ResourceFormat format = ResourceFormat::R32Float;
 		std::uint32_t offset = 0;
+		const char *semantic_name = nullptr;
+		std::uint32_t semantic_index = 0;
 	};
 
 	/// Selects the intended usage of a GPU buffer.
@@ -62,8 +81,15 @@ namespace BlackLight::Engine::Rendering
 		std::uint32_t height = 0;
 		std::uint32_t mip_levels = 1;
 		ResourceFormat format = ResourceFormat::RGBA8Unorm;
+		/// Supplies every mip level in tightly packed order when non-null.
 		const void *initial_data = nullptr;
+		/// Must cover all mip levels when initial_data is non-null.
 		std::size_t initial_data_size = 0;
+		TextureFilter minification_filter = TextureFilter::Linear;
+		TextureFilter magnification_filter = TextureFilter::Linear;
+		TextureAddressMode address_u = TextureAddressMode::Clamp;
+		TextureAddressMode address_v = TextureAddressMode::Clamp;
+		bool render_target = false;
 	};
 
 	/// Owns one backend buffer and releases it through its device implementation.
@@ -89,7 +115,7 @@ namespace BlackLight::Engine::Rendering
 
 	private:
 		class Impl;
-		std::unique_ptr<Impl> impl_;
+		std::shared_ptr<Impl> impl_;
 		friend class RenderingDevice;
 		friend class CommandList;
 		friend class Detail::OpenGLDevice;
@@ -121,7 +147,7 @@ namespace BlackLight::Engine::Rendering
 
 	private:
 		class Impl;
-		std::unique_ptr<Impl> impl_;
+		std::shared_ptr<Impl> impl_;
 		friend class RenderingDevice;
 		friend class CommandList;
 		friend class Detail::OpenGLDevice;
@@ -147,7 +173,23 @@ namespace BlackLight::Engine::Rendering
 		ResourceFormat color_format = ResourceFormat::RGBA8Unorm;
 		ResourceFormat depth_format = ResourceFormat::D24S8;
 		bool depth_test = true;
+		bool depth_write = true;
 		bool alpha_blending = false;
+		enum class CullMode
+		{
+			None,
+			Front,
+			Back
+		} cull_mode = CullMode::None;
+		enum class PrimitiveTopology
+		{
+			TriangleList,
+			LineList,
+			PointList
+		} topology = PrimitiveTopology::TriangleList;
+		/// Must be 1 until multisampled texture and resolve support is added.
+		std::uint32_t sample_count = 1;
+		bool srgb = false;
 	};
 
 	/// Owns a backend graphics pipeline.
@@ -171,10 +213,11 @@ namespace BlackLight::Engine::Rendering
 
 	private:
 		class Impl;
-		std::unique_ptr<Impl> impl_;
+		std::shared_ptr<Impl> impl_;
 		friend class RenderingDevice;
 		friend class CommandList;
 		friend class Detail::OpenGLDevice;
 		friend class Detail::Direct3D11Device;
+		friend class Detail::DeviceLifetime;
 	};
 }

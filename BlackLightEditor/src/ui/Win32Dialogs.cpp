@@ -115,6 +115,42 @@ namespace BlackLight::Editor
 			L"blacklight");
 	}
 
+	std::filesystem::path ShowOpenBuiDialog(
+		const std::filesystem::path &initial_directory)
+	{
+		return ShowOpenFileDialog(initial_directory,
+			L"BlackLight UI Document (*.bui)\0*.bui\0All Files (*.*)\0*.*\0",
+			L"bui");
+	}
+
+	std::filesystem::path ShowSaveBuiDialog(
+		const std::filesystem::path &suggested_path)
+	{
+		std::vector<wchar_t> file_name(32768, L'\0');
+		std::wstring suggestion = suggested_path.filename().wstring();
+		if (suggestion.empty())
+			suggestion = L"Untitled.bui";
+		if (suggested_path.extension().empty())
+			suggestion += L".bui";
+		CopyToBuffer(suggestion, file_name.data(), file_name.size());
+		const std::wstring initial = suggested_path.parent_path().wstring();
+
+		OPENFILENAMEW dialog{};
+		dialog.lStructSize = sizeof(dialog);
+		dialog.hwndOwner = GetActiveWindow();
+		dialog.lpstrFilter =
+			L"BlackLight UI Document (*.bui)\0*.bui\0All Files (*.*)\0*.*\0";
+		dialog.lpstrFile = file_name.data();
+		dialog.nMaxFile = static_cast<DWORD>(file_name.size());
+		dialog.lpstrInitialDir = initial.empty() ? nullptr : initial.c_str();
+		dialog.lpstrDefExt = L"bui";
+		dialog.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+
+		if (!GetSaveFileNameW(&dialog))
+			return {};
+		return std::filesystem::path(file_name.data());
+	}
+
 	std::filesystem::path ShowBrowseFolderDialog(
 		const std::filesystem::path &initial_directory, std::wstring_view title)
 	{

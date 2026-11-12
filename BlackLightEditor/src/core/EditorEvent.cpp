@@ -25,6 +25,9 @@ namespace BlackLight::Editor
 		case EventType::ProjectChanged: return "ProjectChanged";
 		case EventType::ProjectOpened: return "ProjectOpened";
 		case EventType::ProjectClosed: return "ProjectClosed";
+		case EventType::UiDocumentsChanged: return "UiDocumentsChanged";
+		case EventType::UiDocumentModified: return "UiDocumentModified";
+		case EventType::UiSelectionChanged: return "UiSelectionChanged";
 		case EventType::StatusMessage: return "StatusMessage";
 		case EventType::QuitRequested: return "QuitRequested";
 		}

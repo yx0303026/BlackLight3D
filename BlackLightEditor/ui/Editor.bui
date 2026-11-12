@@ -214,7 +214,7 @@
     }
 
     .dock-left {
-      flex: 0 0 250dp;
+      flex: 0 0 290dp;
     }
 
     .dock-center {
@@ -245,7 +245,8 @@
       flex-direction: row;
       align-items: center;
       gap: 6dp;
-      padding: 5dp 10dp;
+      padding: 4dp 7dp;
+      font-size: 11dp;
       color: @text-muted;
       border-right: 1dp @border;
       cursor: pointer;
@@ -563,6 +564,182 @@
       background-color: @hover;
     }
 
+    /* VSCode-style project browser and UI hierarchy */
+    .folder-row, .tree-row {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 5dp;
+      height: 22dp;
+      padding-right: 4dp;
+      color: @text;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .folder-row:hover, .tree-row:hover {
+      background-color: @hover;
+    }
+
+    .tree-row.selected {
+      background-color: @selection;
+      border-left: 2dp @accent;
+    }
+
+    .tree-row.drag-over {
+      background-color: @accent;
+      color: #ffffff;
+    }
+
+    .folder-glyph {
+      display: block;
+      width: 16dp;
+      flex-shrink: 0;
+      color: @text-muted;
+      font-size: 10dp;
+    }
+
+    .folder-name {
+      display: block;
+      flex: 1 1 auto;
+      overflow: hidden;
+    }
+
+    .tree-toggle {
+      display: block;
+      width: 12dp;
+      flex-shrink: 0;
+      color: @text-muted;
+      font-size: 10dp;
+    }
+
+    .tree-tag {
+      display: block;
+      color: @text;
+      flex-shrink: 0;
+    }
+
+    .tree-id {
+      display: block;
+      color: @accent;
+      flex-shrink: 0;
+    }
+
+    .tree-class {
+      display: block;
+      color: @warning;
+      flex-shrink: 0;
+    }
+
+    .tree-text {
+      display: block;
+      color: @text-muted;
+      overflow: hidden;
+    }
+
+    .ui-palette {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 3dp;
+      flex-shrink: 0;
+      padding-bottom: 6dp;
+      border-bottom: 1dp @border;
+    }
+
+    .palette-button {
+      display: block;
+      padding: 3dp 6dp;
+      background-color: @surface-alt;
+      color: @text;
+      border: 1dp @border;
+      border-radius: 3dp;
+      cursor: pointer;
+      font-size: 10dp;
+    }
+
+    .palette-button:hover {
+      background-color: @hover;
+      border-color: @border-strong;
+    }
+
+    .ui-doc-tabs {
+      display: flex;
+      flex-direction: row;
+      flex-shrink: 0;
+      min-height: 24dp;
+      margin-bottom: 4dp;
+      overflow-x: hidden;
+      border-bottom: 1dp @border;
+    }
+
+    .ui-doc-tab {
+      display: flex;
+      flex-direction: row;
+      flex-shrink: 0;
+      align-items: center;
+      gap: 4dp;
+      padding: 3dp 6dp;
+      color: @text-muted;
+      border-right: 1dp @border;
+      cursor: pointer;
+      font-size: 10dp;
+      white-space: nowrap;
+    }
+
+    .ui-doc-tab.active {
+      color: @text;
+      background-color: @selection;
+      border-top: 2dp @accent;
+    }
+
+    .ui-doc-tab-close {
+      display: block;
+      flex-shrink: 0;
+      padding: 0 2dp;
+      color: @text-muted;
+    }
+
+    .ui-doc-tab-close:hover {
+      color: @error;
+    }
+
+    .ui-property {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 6dp;
+      padding: 2dp 0;
+    }
+
+    .ui-input {
+      display: block;
+      flex: 1 1 auto;
+      height: 24dp;
+      padding: 3dp 6dp;
+      background-color: @bg;
+      color: @text;
+      border: 1dp @border-strong;
+      border-radius: 3dp;
+      font-family: Arial;
+      font-size: 11dp;
+    }
+
+    .ui-input:focus {
+      border: 1dp @accent;
+    }
+
+    /* Live .bui preview canvas */
+    .viewport-preview-frame {
+      display: block;
+      flex: 1 1 auto;
+      width: 100%;
+      background-color: @bg;
+      border: 1dp @border;
+      overflow: hidden;
+    }
+
     /* Project creation wizard */
     .wizard-overlay {
       position: absolute;
@@ -871,6 +1048,7 @@
       <div id="status_bar" class="status-bar">
         <div id="status_message" class="status-message">Ready</div>
         <div id="status_undo" class="status-item">Undo: -</div>
+        <div id="status_ui" class="status-item">No UI document</div>
         <div id="status_objects" class="status-item">0 objects</div>
         <div id="status_mode" class="status-item status-mode">Edit</div>
         <div id="status_project" class="status-item">No project</div>

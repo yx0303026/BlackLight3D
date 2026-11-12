@@ -8,12 +8,14 @@
 
 namespace BlackLight::Editor
 {
+	class UiDocumentSessions;
 
 	/// Supplies the editor services available while a command executes.
 	struct CommandContext
 	{
 		EditorState &state;
 		EventBus &events;
+		UiDocumentSessions *ui_docs = nullptr;
 	};
 
 	/// Implements a reversible editor operation.

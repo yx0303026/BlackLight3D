@@ -83,6 +83,8 @@ namespace BlackLight::Editor
 		bool SetActivePanel(DockRegion region, std::string_view id);
 		/// Returns the active tab id for a region, or an empty string.
 		std::string GetActivePanel(DockRegion region) const;
+		/// Returns whether a panel is visible and selected in its region.
+		bool IsPanelActive(std::string_view id) const;
 
 		/// Returns a panel descriptor, or null when the identifier is unknown.
 		const PanelDescriptor *FindPanel(std::string_view id) const;

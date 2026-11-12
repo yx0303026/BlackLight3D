@@ -45,6 +45,11 @@ namespace BlackLight::Editor
 			const ProjectMetadata &metadata,
 			std::string_view expected_template_version = {});
 
+		/// Checks that `ui/` contains at least one editable `.bui` document.
+		/// Missing UI files are warnings, not validation failures.
+		static std::vector<ProjectIssue> ValidateUiDirectory(
+			const std::filesystem::path &project_directory);
+
 		/// Returns whether any issue has Error severity.
 		static bool HasErrors(const std::vector<ProjectIssue> &issues) noexcept;
 

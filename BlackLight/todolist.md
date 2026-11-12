@@ -46,18 +46,20 @@ BlackLight 当前是“渲染设备宿主 + 少量运行时服务”的骨架：
 
 ### 1.1 资源与命令提交
 
-- [ ] **`CommandList` 真实记录命令**：用变体队列保存 pipeline / vertex buffer / index buffer / viewport / draw，替换 `draw_count` 空实现 — ★★☆（2–3d）
-- [ ] **资源句柄绑定后端对象**：`Buffer` / `Texture` / `GraphicsPipeline` 的 `Impl` 持有真实后端对象与所属设备，析构时安全释放（设备先销毁时的延迟释放队列）— ★★☆（2–3d）
-- [ ] **OpenGL 函数加载器**：运行时加载 GL 3.3 核心函数（VBO/VAO/FBO/Shader），不引入 GLEW/GLAD 外部依赖 — ★★☆（2–3d）
-- [ ] **OpenGL 资源创建**：顶点/索引/常量/Storage Buffer、2D 纹理、采样状态 — ★★☆（3–5d）
-- [ ] **OpenGL 提交执行**：绑定 VAO/管线/纹理、设置 viewport、执行 indexed/non-indexed draw — ★★☆（2–3d）
-- [ ] **D3D11 提交执行**：Buffer、Texture/SRV、InputLayout、RSSetViewports、Draw/DrawIndexed — ★★☆（3–5d）
-- [ ] **常量与 uniform 绑定 API**：`CommandList::SetUniform` / `SetTexture`，支持标量、vec2/3/4、mat4、纹理槽 — ★★☆（2–3d，**会扩展公开 ABI，需先定设计**）
-- [ ] **统一管线状态**：扩展 `GraphicsPipelineDesc`（深度测试/写入、剔除、混合模式、MSAA、sRGB）— ★★☆（2–3d）
-- [ ] **着色器编译**：GLSL 运行时编译；D3D11 使用 `D3DCompile`（需链接 `d3dcompiler`）；编译错误写日志 — ★★☆（2–3d）
-- [ ] **纹理格式映射**：`ResourceFormat` 到 GL internal format / DXGI format，含 sRGB 与 mipmap — ★☆☆（1–2d）
-- [ ] **Render Target / 离屏渲染**：Texture 作为颜色附件 + 深度附件，`BeginFrame` 可切换目标 — ★★★（1 周）
-- [ ] **设备能力查询**：`DeviceCapabilities`（最大纹理、MRT 数、计算着色器、MSAA）— ★☆☆（1d）
+- [x] **`CommandList` 真实记录命令**：变体队列保存 pipeline / vertex buffer / index buffer / viewport / uniform / texture / draw；成功提交后清空，失败时保留 — ★★☆（2–3d）
+- [x] **资源句柄绑定后端对象**：资源携带设备身份与后端对象，命令捕获强引用；设备关闭前清理仍存活对象，GL 删除延迟到上下文线程 — ★★☆（2–3d）
+- [x] **OpenGL 函数加载器**：运行时加载本实现使用的 GL 3.3 VBO/VAO/FBO/Shader/Sampler 函数，不引入 GLEW/GLAD — ★★☆（2–3d）
+- [x] **OpenGL 资源创建**：顶点/索引/常量/不透明 Storage Buffer 分配、2D 纹理、采样状态；3.3 不支持可着色器读写的 SSBO — ★★☆（3–5d）
+- [x] **OpenGL 提交执行**：绑定 VAO/管线/纹理、设置 viewport、执行 indexed/non-indexed draw — ★★☆（2–3d）
+- [x] **D3D11 提交执行**：Buffer、Texture/SRV、InputLayout、RSSetViewports、Draw/DrawIndexed — ★★☆（3–5d）
+- [x] **常量与 uniform 绑定 API**：`CommandList::SetUniform` / `SetTexture`，支持 float、vec2/3/4、mat4、命名纹理槽 — ★★☆（2–3d）
+- [ ] **统一管线状态**：深度测试/写入、剔除、混合、sRGB 已接入；MSAA 需要纹理采样数与 resolve API，目前管线只接受单采样 — ★★☆（2–3d）
+- [x] **着色器编译**：GLSL 运行时编译；D3D11 使用 `D3DCompile`；编译与链接诊断写日志 — ★★☆（2–3d）
+- [x] **纹理格式映射**：已映射 `ResourceFormat` 到 GL internal format / DXGI format，支持 sRGB 和完整紧密排列 mip 链 — ★☆☆（1–2d）
+- [x] **Render Target / 离屏渲染**：颜色纹理可创建 framebuffer/RTV，D24S8 可作深度附件，`BeginFrame` 可切换目标 — ★★★（1 周）
+- [x] **设备能力查询**：`DeviceCapabilities` 提供纹理尺寸、MRT、compute、storage-buffer 与 MSAA 上限/支持位 — ★☆☆（1d）
+
+实现约束与 ABI、资源生命周期和后端差异见 [渲染设备 1.1 实施记录](../docs/rendering-device-1.1.md)。
 
 ### 1.2 后端一致性
 

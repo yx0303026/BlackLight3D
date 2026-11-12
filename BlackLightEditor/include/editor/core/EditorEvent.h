@@ -29,6 +29,9 @@ namespace BlackLight::Editor
 		ProjectChanged,
 		ProjectOpened,
 		ProjectClosed,
+		UiDocumentsChanged,
+		UiDocumentModified,
+		UiSelectionChanged,
 		StatusMessage,
 		QuitRequested
 	};

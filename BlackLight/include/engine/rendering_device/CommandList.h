@@ -1,8 +1,10 @@
 #pragma once
 
 #include "../../BlackLightApi.h"
+#include "../Math.h"
 #include "RenderingResources.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 
@@ -43,6 +45,18 @@ namespace BlackLight::Engine::Rendering
 		void SetIndexBuffer(const Buffer &buffer, ResourceFormat index_format, std::uint32_t offset = 0);
 		/// Selects the viewport for subsequent draw calls.
 		void SetViewport(const Viewport &viewport);
+		/// Records a scalar uniform for the currently selected pipeline.
+		void SetUniform(const char *name, float value);
+		/// Records a two-component uniform for the currently selected pipeline.
+		void SetUniform(const char *name, const Math::Vector2 &value);
+		/// Records a three-component uniform for the currently selected pipeline.
+		void SetUniform(const char *name, const Math::Vector3 &value);
+		/// Records a four-component uniform for the currently selected pipeline.
+		void SetUniform(const char *name, const std::array<float, 4> &value);
+		/// Records a 4x4 matrix uniform for the currently selected pipeline.
+		void SetUniform(const char *name, const Math::Matrix4 &value);
+		/// Binds a texture to a named sampler uniform and texture unit.
+		void SetTexture(const char *uniform_name, std::uint32_t slot, const Texture &texture);
 		/// Records a non-indexed draw.
 		void Draw(std::uint32_t vertex_count, std::uint32_t first_vertex = 0);
 		/// Records an indexed draw.
@@ -56,5 +70,7 @@ namespace BlackLight::Engine::Rendering
 		class Impl;
 		std::unique_ptr<Impl> impl_;
 		friend class RenderingDevice;
+		friend class Detail::OpenGLDevice;
+		friend class Detail::Direct3D11Device;
 	};
 }

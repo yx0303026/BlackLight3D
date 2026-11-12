@@ -18,15 +18,21 @@ Initialization and runtime failures throw `RenderingException`.
 ## Public resources
 
 `RenderingResources.h` defines move-only RAII wrappers for `Buffer`, `Texture`, and
-`GraphicsPipeline`. `CommandList` records normalized pipeline, buffer, viewport and
-draw operations. The wrappers do not expose WGL, D3D11, or DXGI types in the public
-ABI.
+`GraphicsPipeline`. `CommandList` records ordered pipeline, vertex/index buffer,
+viewport, uniform, texture, and draw operations. Successful submission clears the
+recorded queue; a failed submission preserves it for inspection or retry. The wrappers
+do not expose WGL, D3D11, or DXGI types in the public ABI.
 
-The first implementation stage provides real Win32 surface creation, event pumping,
-frame clearing, and presentation for both APIs. Resource allocation and normalized
-draw execution currently report `RenderingError::UnsupportedOperation` until the
-backend-specific resource binding layer is completed; callers must not treat these
-operations as no-ops.
+Both backends create buffers, textures, samplers, and graphics pipelines and execute
+draw command lists. The OpenGL backend uses an in-tree OpenGL 3.3 entry-point loader;
+the D3D11 backend compiles HLSL with `D3DCompile`. Resources carry device identity,
+and submission rejects resources created by another device. Resources held past device
+shutdown have their backend objects released during shutdown while the native context
+or D3D device is still valid.
+
+See [Rendering Device 1.1 implementation notes](rendering-device-1.1.md) for the
+uniform ABI, mip-data layout, render-target rules, capability reporting, and backend
+limitations.
 
 ## UI integration
 

@@ -1,10 +1,10 @@
 # BlackLightEditor
 
-BlackLightEditor is the stage-two shell of the BlackLight3D visual editor. It builds on
-BlackLightUI (`.bui` + RmlUi) and implements the editor core framework and the project
-management system: application shell, event bus, configuration, editor state, command
-system, undo/redo, menus, toolbar, shortcuts, dockable panels, themes, the project
-creation wizard, template generation, project metadata, validation, and recent projects.
+BlackLightEditor is the stage-three shell of the BlackLight3D visual editor. It builds
+on BlackLightUI (`.bui` + RmlUi) and implements the editor core framework, the project
+management system, and the first UI editing loop: application shell, event bus,
+configuration, editor state, command system, undo/redo, menus, toolbar, shortcuts,
+dockable panels, themes, project generation, `.bui` document editing, and live preview.
 
 The editor is a separate executable; the engine SDK and the Demo are unchanged.
 The output is `build/{arch}/{config}/blacklight_editor.exe`.
@@ -71,15 +71,37 @@ The project is split into a UI-free core library and the RmlUi host:
 The core and project layers have no RmlUi or engine dependency and are covered by
 [`tests/EditorCoreTests.cpp`](tests/EditorCoreTests.cpp).
 
+The UI editor adds a lossless document layer under
+`include/editor/uidoc` and `src/uidoc`:
+
+| Layer | Files | Responsibility |
+| --- | --- | --- |
+| UI document | `include/editor/uidoc`, `src/uidoc` | `.bui` parsing, source ranges, local splices, structural paths |
+| Sessions | `UiDocumentSessions.h/.cpp` | Multi-tab documents, selection, per-tab undo, save and save-as |
+| Preview | `ui/BuiPreview.h/.cpp` | Synthetic `data-bl-node` layout, Viewport anchoring, click selection |
+
+`BuiDocumentModel` keeps the complete original file text and edits only the
+target byte ranges. Attribute and text changes leave every other byte untouched;
+insert, remove, and move operations generate or remove complete indented lines
+using the document's existing newline spelling (LF or CRLF). The model reparses
+after each splice and exposes structural paths such as `0/2/1`, so node identifiers
+never become the persisted selection.
+
+UI editing is covered by
+[`tests/BuiDocumentTests.cpp`](tests/BuiDocumentTests.cpp), which checks round-trip
+fidelity, tolerant parsing, local attribute/text rewrites, structural edits,
+path mapping, per-tab undo, save, save-as, and close behavior without RmlUi.
+
 ## UI behavior
 
 - Menu bar: File, Edit, View, Build, Tools, Help. Items are generated from the
   command registry and show shortcuts and checked state.
 - Toolbar: new/open workspace, new project, save, undo/redo, add/delete object,
   and edit/play/pause mode.
-- Docks: Scene and Assets on the left, Viewport in the center, Inspector on the
-  right, Output and History at the bottom. Tabs can be switched, closed from the
-  tab bar, toggled from View, and restored with **Reset Layout**.
+- Docks: Scene, Assets, Folder, and Hierarchy on the left, Viewport in the center,
+  Inspector on the right, Output and History at the bottom. Folder is a lazy
+  project browser; Hierarchy edits the active `.bui` layout. Tabs can be switched,
+  closed from the tab bar, toggled from View, and restored with **Reset Layout**.
 - Themes: **Dark**, **Light**, and **Midnight**. The `.bui` stylesheet uses
   `@token` colors that are replaced at load time and when the theme changes.
 - Icons: UI glyphs come from the Windows icon font library — **Segoe Fluent
@@ -97,7 +119,13 @@ The core and project layers have no RmlUi or engine dependency and are covered b
 | Undo / Redo | Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z |
 | Delete selected object | Delete |
 | Toggle Scene / Assets / Inspector / Output / History | Ctrl+1 .. Ctrl+5 |
+| New / Open / Save / Save As / Close UI document | Ctrl+Alt+N / Ctrl+Alt+O / Ctrl+Alt+S / Ctrl+Alt+Shift+S / Ctrl+Alt+W |
+| Move selected UI node | Alt+Up / Alt+Down |
 | Exit | Ctrl+Q |
+
+When a `.bui` document is active, Ctrl+Z/Ctrl+Y and the toolbar undo/redo buttons
+operate on that tab's own history. Without a UI document they continue to operate
+on the workspace command history.
 
 ## Project system
 
@@ -189,6 +217,30 @@ Unknown lines are ignored for forward compatibility. Projects are the primary
 container in stage two; workspaces remain the editable document format that the
 later scene editor builds on.
 
+## UI documents
+
+UI layouts live under the project's `ui/` directory, with `ui/Main.bui` as the
+default entry document. Each `.bui` file keeps the native container form:
+
+```xml
+<bui>
+  <styles>/* RCSS */</styles>
+  <layout><!-- RML --></layout>
+</bui>
+```
+
+Open a document from the **Folder** panel. It becomes an independent tab with its
+own selection, modified marker, and undo position. The **Hierarchy** panel renders
+element and text nodes with expandable paths; **Inspector** exposes `id`, `class`,
+and text; **Viewport** shows a live preview in the same RmlUi context. Clicking an
+element in the preview selects the matching hierarchy node.
+
+The preview injects `data-bl-node` attributes into a temporary serialization only.
+Those markers are never written to the model or the saved file. Saving writes the
+model's complete source text as UTF-8, preserving the original `<styles>` block,
+comments, whitespace, and line endings outside the edited ranges. New child lines
+use the document's existing LF or CRLF convention.
+
 ## Configuration
 
 Settings are stored in `%APPDATA%\BlackLight3D\editor.ini`, falling back to the
@@ -204,8 +256,9 @@ executable directory when `APPDATA` is unavailable. The file persists:
 
 ## Scope
 
-This stage intentionally leaves the asset pipeline, scene editing, property
-editors, build integration, and runtime preview to later stages. The placeholder
-panels and commands establish the extension points: register commands and panels,
-render content from editor state, and route actions through `data-action` or
-`data-command` attributes.
+This stage intentionally leaves the asset pipeline, scene editing, general
+property editors, build integration, and runtime preview to later stages. The UI
+editor is the first real document editor: it covers the folder browser, lossless
+`.bui` model, multi-tab sessions, hierarchy edits, `id`/`class`/text properties,
+Viewport preview, selection linking, and save/save-as. CSS editing, event binding,
+and transform gizmos are deferred to 3.0.x.

@@ -15,6 +15,8 @@ add_library(blacklight_editor_core STATIC
 	src/project/ProjectValidator.cpp
 	src/project/RecentProjects.cpp
 	src/project/TemplateEngine.cpp
+	src/uidoc/BuiDocumentModel.cpp
+	src/uidoc/UiDocumentSessions.cpp
 )
 
 target_include_directories(blacklight_editor_core
@@ -28,6 +30,7 @@ set_target_properties(blacklight_editor_core PROPERTIES
 )
 
 add_executable(blacklight_editor
+	src/ui/BuiPreview.cpp
 	src/ui/EditorApplication.cpp
 	src/ui/EditorMenu.cpp
 	src/ui/EditorUi.cpp
@@ -80,15 +83,25 @@ if(BLACKLIGHT_BUILD_TESTS)
 	add_executable(blacklight_editor_tests tests/EditorCoreTests.cpp)
 	target_link_libraries(blacklight_editor_tests PRIVATE blacklight_editor_core
 		shell32 ole32 winhttp)
+	add_executable(blacklight_bui_tests tests/BuiDocumentTests.cpp)
+	target_link_libraries(blacklight_bui_tests PRIVATE blacklight_editor_core)
 	set_target_properties(blacklight_editor_tests PROPERTIES
+		CXX_STANDARD 17
+		CXX_STANDARD_REQUIRED YES
+		CXX_EXTENSIONS NO
+	)
+	set_target_properties(blacklight_bui_tests PROPERTIES
 		CXX_STANDARD 17
 		CXX_STANDARD_REQUIRED YES
 		CXX_EXTENSIONS NO
 	)
 	if(MSVC)
 		target_compile_options(blacklight_editor_tests PRIVATE /W4 /EHsc /permissive-)
+		target_compile_options(blacklight_bui_tests PRIVATE /W4 /EHsc /permissive-)
 	else()
 		target_compile_options(blacklight_editor_tests PRIVATE -Wall -Wextra -Wpedantic)
+		target_compile_options(blacklight_bui_tests PRIVATE -Wall -Wextra -Wpedantic)
 	endif()
 	add_test(NAME blacklight_editor_tests COMMAND blacklight_editor_tests)
+	add_test(NAME blacklight_bui_tests COMMAND blacklight_bui_tests)
 endif()

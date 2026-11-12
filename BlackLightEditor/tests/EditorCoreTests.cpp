@@ -555,6 +555,8 @@ namespace
 		const std::filesystem::path root = temp.GetPath() / "ValidProject";
 		WriteFile(root / "CMakeLists.txt", "cmake_minimum_required(VERSION 3.25)\n");
 		WriteFile(root / "src" / "main.cpp", "int main() { return 0; }\n");
+		WriteFile(root / "ui" / "Main.bui",
+			"<bui><styles>body{}</styles><layout><div/></layout></bui>\n");
 		std::filesystem::create_directories(root / "assets");
 		std::string error;
 		CHECK(SaveProjectFile(root / "project.blacklight", metadata, error));
@@ -563,6 +565,11 @@ namespace
 			ProjectValidator::ValidateDirectory(root, metadata, "1.0.0");
 		CHECK(!ProjectValidator::HasErrors(issues));
 		CHECK(issues.empty());
+
+		const std::vector<ProjectIssue> no_ui =
+			ProjectValidator::ValidateUiDirectory(temp.GetPath() / "MissingUi");
+		CHECK(!ProjectValidator::HasErrors(no_ui));
+		CHECK(ProjectValidator::HasWarnings(no_ui));
 
 		const std::vector<ProjectIssue> outdated =
 			ProjectValidator::ValidateDirectory(root, metadata, "2.0.0");

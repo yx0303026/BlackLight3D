@@ -10,7 +10,15 @@ namespace BlackLight::Editor
 	{
 	}
 
-	CommandContext CommandHistory::Context() noexcept { return {state_, events_}; }
+	void CommandHistory::SetUiDocuments(UiDocumentSessions *ui_docs) noexcept
+	{
+		ui_docs_ = ui_docs;
+	}
+
+	CommandContext CommandHistory::Context() noexcept
+	{
+		return {state_, events_, ui_docs_};
+	}
 
 	bool CommandHistory::Execute(std::unique_ptr<Command> command)
 	{

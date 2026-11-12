@@ -11,6 +11,7 @@
 
 namespace BlackLight::Editor
 {
+	class UiDocumentSessions;
 
 	/// Executes commands and maintains the undo and redo stacks.
 	class CommandHistory final
@@ -18,6 +19,9 @@ namespace BlackLight::Editor
 	public:
 		/// Binds the history to the state it mutates and the bus receives notifications.
 		CommandHistory(EditorState &state, EventBus &events, std::size_t limit = 128);
+
+		/// Supplies the UI document sessions available to commands.
+		void SetUiDocuments(UiDocumentSessions *ui_docs) noexcept;
 
 		/// Executes a command and records it when undoable.
 		/// Returns false when the command is missing, cannot run, or fails.
@@ -65,6 +69,7 @@ namespace BlackLight::Editor
 
 		EditorState &state_;
 		EventBus &events_;
+		UiDocumentSessions *ui_docs_ = nullptr;
 		std::vector<std::unique_ptr<Command>> undo_;
 		std::vector<std::unique_ptr<Command>> redo_;
 		std::size_t saved_undo_count_ = 0;

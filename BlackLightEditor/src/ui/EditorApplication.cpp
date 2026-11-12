@@ -7,15 +7,19 @@
 #include "engine/Input.h"
 #include "engine/Logger.h"
 #include <RmlUi/Core.h>
+#include <RmlUi/Core/Elements/ElementFormControl.h>
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
 
 #include <algorithm>
+#include <cctype>
 #include <exception>
+#include <fstream>
 #include <initializer_list>
 #include <memory>
+#include <set>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -30,6 +34,7 @@ namespace BlackLight::Editor
 	{
 
 		constexpr const char *EditorVersion = "0.1.0";
+		constexpr std::size_t MaxFolderDepth = 16;
 
 		/// Locates the executable directory for configuration and logs.
 		std::filesystem::path GetExecutableDirectory()
@@ -108,6 +113,56 @@ namespace BlackLight::Editor
 			case LogLevel::Debug: return "log-trace";
 			default: return "log-info";
 			}
+		}
+
+		/// Returns the lower-case extension of a path without the dot.
+		std::string FileExtension(const std::filesystem::path &path)
+		{
+			std::string extension = path.extension().u8string();
+			if (!extension.empty() && extension.front() == '.')
+				extension.erase(extension.begin());
+			for (char &character : extension)
+				character = static_cast<char>(std::tolower(
+					static_cast<unsigned char>(character)));
+			return extension;
+		}
+
+		/// Returns whether a directory name is generated or hidden editor noise.
+		bool IsIgnoredDirectory(std::string_view name)
+		{
+			if (name == "build" || name == ".git" || name == ".vs" ||
+				name == "CMakeFiles" || name == "_CPack_Packages")
+			{
+				return true;
+			}
+			return name.rfind("cmake-build-", 0) == 0;
+		}
+
+		/// Escapes one browser action payload as a single RML attribute value.
+		std::string ActionValue(std::string_view prefix,
+			const std::filesystem::path &path)
+		{
+			return std::string(prefix) + std::string(path.u8string());
+		}
+
+		/// Returns a display glyph for a file type.
+		const char *FileGlyph(const std::filesystem::path &path, bool directory)
+		{
+			if (directory)
+				return ">";
+			const std::string extension = FileExtension(path);
+			if (extension == "bui")
+				return "UI";
+			if (extension == "blacklight")
+				return "P";
+			if (extension == "cpp" || extension == "h" || extension == "hpp" ||
+				extension == "c")
+			{
+				return "C";
+			}
+			if (extension == "md")
+				return "M";
+			return "-";
 		}
 
 	} // namespace
@@ -204,14 +259,16 @@ namespace BlackLight::Editor
 		});
 
 		panels_.SetActionHandler([this](std::string_view action) { HandlePanelAction(action); });
+		preview_.SetSelectionHandler([this](std::string_view path) { SelectUiNode(path); });
 		panels_.ApplyConfig(config_);
 		menus_.Initialize(ui_);
 		panels_.Initialize(ui_);
+		history_.SetUiDocuments(&ui_docs_);
 		ui_.AddListener("toolbar", "toolbar", "click",
 			[this](Rml::Event &event) { HandleToolbarClick(event); });
 
 		last_log_revision_ = logs_.GetRevision();
-		state_.SetStatus("Ready - Stage 2 project system");
+		state_.SetStatus("Ready - UI editor core");
 		ui_dirty_ = true;
 
 		BL_LOG(LogLevel::Info, "Editor", "Editor UI initialized");
@@ -230,6 +287,7 @@ namespace BlackLight::Editor
 		}
 		if (panels_.ConsumeRefreshRequest())
 			ui_dirty_ = true;
+		UpdateUiPreview();
 
 		if (!ui_dirty_)
 			return;
@@ -241,6 +299,8 @@ namespace BlackLight::Editor
 	{
 		Logger::Get().ClearSinks();
 		SaveEditorConfig();
+		ui_.ClearListeners("ui_preview");
+		preview_.Close();
 		wizard_.Shutdown(ui_);
 		menus_.Shutdown(ui_);
 		panels_.Shutdown(ui_);
@@ -283,21 +343,36 @@ namespace BlackLight::Editor
 
 		add(CommandInfo("app.quit", "Exit", "File", [this]
 		{
-			if (!ConfirmDiscardIfNeeded())
+			if (!ConfirmDiscardIfNeeded() || !ConfirmDiscardUiTabs())
 				return false;
 			events_.Emit({EventType::QuitRequested, {}, {}});
 			return true;
 		}).Shortcut('Q', true));
 
 		add(CommandInfo("edit.undo", "Undo", "Edit",
-			[this] { return history_.Undo(); }).Shortcut('Z', true)
-			.Enabled([this] { return history_.CanUndo(); }));
+			[this] { return HasActiveUiDocument() ? UndoUiDocument() : history_.Undo(); })
+			.Shortcut('Z', true)
+			.Enabled([this]
+			{
+				const UiDocumentTab *tab = ui_docs_.GetActive();
+				return tab ? tab->CanUndo() : history_.CanUndo();
+			}));
 		add(CommandInfo("edit.redo", "Redo", "Edit",
-			[this] { return history_.Redo(); }).Shortcut('Y', true)
-			.Enabled([this] { return history_.CanRedo(); }));
+			[this] { return HasActiveUiDocument() ? RedoUiDocument() : history_.Redo(); })
+			.Shortcut('Y', true)
+			.Enabled([this]
+			{
+				const UiDocumentTab *tab = ui_docs_.GetActive();
+				return tab ? tab->CanRedo() : history_.CanRedo();
+			}));
 		add(CommandInfo("edit.redo_alternate", "Redo", "Edit",
-			[this] { return history_.Redo(); }).Shortcut('Z', true, true)
-			.Enabled([this] { return history_.CanRedo(); }));
+			[this] { return HasActiveUiDocument() ? RedoUiDocument() : history_.Redo(); })
+			.Shortcut('Z', true, true)
+			.Enabled([this]
+			{
+				const UiDocumentTab *tab = ui_docs_.GetActive();
+				return tab ? tab->CanRedo() : history_.CanRedo();
+			}));
 		add(CommandInfo("edit.clear_history", "Clear Command History", "Tools", [this]
 		{
 			history_.Clear();
@@ -309,8 +384,13 @@ namespace BlackLight::Editor
 			[this] { return AddObject(); })
 			.Enabled([this] { return state_.HasDocument(); }));
 		add(CommandInfo("object.delete", "Delete Selected Object", "Edit",
-			[this] { return DeleteSelected(); }).Shortcut(VK_DELETE)
-			.Enabled([this] { return HasSelectedObject(); }));
+			[this]
+			{
+				return HasUiSelection() && HasActiveUiDocument()
+					? DeleteUiNode() : DeleteSelected();
+			})
+			.Shortcut(VK_DELETE)
+			.Enabled([this] { return HasSelectedObject() || HasUiSelection(); }));
 
 		add(CommandInfo("output.clear", "Clear Output", "Tools", [this]
 		{
@@ -345,6 +425,46 @@ namespace BlackLight::Editor
 					return true;
 				}).Checked([this, theme_id] { return theme_id_ == theme_id; }));
 		}
+
+		add(CommandInfo("ui.new", "New UI Document", "UI",
+			[this] { return NewUiDocument(); }).Shortcut('N', true, false, true));
+		add(CommandInfo("ui.open", "Open UI Document...", "UI",
+			[this] { return OpenUiDocumentDialog(); }).Shortcut('O', true, false, true));
+		add(CommandInfo("ui.save", "Save UI Document", "UI",
+			[this] { return SaveUiDocument(false); }).Shortcut('S', true, false, true)
+			.Enabled([this] { return HasActiveUiDocument(); }));
+		add(CommandInfo("ui.save_as", "Save UI Document As...", "UI",
+			[this] { return SaveUiDocument(true); }).Shortcut('S', true, true, true)
+			.Enabled([this] { return HasActiveUiDocument(); }));
+		add(CommandInfo("ui.close", "Close UI Document", "UI",
+			[this] { return CloseUiDocument(); }).Shortcut('W', true, false, true)
+			.Enabled([this] { return HasActiveUiDocument(); }));
+		add(CommandInfo("ui.node.add_container", "Add Container", "UI",
+			[this] { return AddUiNode("div"); })
+			.Enabled([this] { return HasActiveUiDocument(); }));
+		add(CommandInfo("ui.node.add_button", "Add Button", "UI",
+			[this] { return AddUiNode("button"); })
+			.Enabled([this] { return HasActiveUiDocument(); }));
+		add(CommandInfo("ui.node.add_text", "Add Text", "UI",
+			[this] { return AddUiNode("text"); })
+			.Enabled([this] { return HasActiveUiDocument(); }));
+		add(CommandInfo("ui.node.delete", "Delete UI Node", "UI",
+			[this] { return DeleteUiNode(); })
+			.Enabled([this] { return HasUiSelection(); }));
+		add(CommandInfo("ui.node.move_up", "Move UI Node Up", "UI",
+			[this] { return MoveUiNode(-1); })
+			.Shortcut(VK_UP, false, false, true)
+			.Enabled([this] { return HasUiSelection(); }));
+		add(CommandInfo("ui.node.move_down", "Move UI Node Down", "UI",
+			[this] { return MoveUiNode(1); })
+			.Shortcut(VK_DOWN, false, false, true)
+			.Enabled([this] { return HasUiSelection(); }));
+		add(CommandInfo("view.panel.folder", "Folder Panel", "View",
+			[this] { return panels_.TogglePanel("folder"); })
+			.Checked([this] { return panels_.IsVisible("folder"); }));
+		add(CommandInfo("view.panel.hierarchy", "Hierarchy Panel", "View",
+			[this] { return panels_.TogglePanel("hierarchy"); })
+			.Checked([this] { return panels_.IsVisible("hierarchy"); }));
 
 		add(CommandInfo("layout.reset", "Reset Layout", "View", [this]
 		{
@@ -417,6 +537,10 @@ namespace BlackLight::Editor
 			[this] { return RenderScenePanel(); }});
 		panels_.RegisterPanel({"assets", "Assets", DockRegion::Left, true, true,
 			[this] { return RenderAssetsPanel(); }});
+		panels_.RegisterPanel({"folder", "Folder", DockRegion::Left, true, true,
+			[this] { return RenderFolderPanel(); }});
+		panels_.RegisterPanel({"hierarchy", "Hierarchy", DockRegion::Left, true, true,
+			[this] { return RenderHierarchyPanel(); }});
 		panels_.RegisterPanel({"inspector", "Inspector", DockRegion::Right, true, true,
 			[this] { return RenderInspectorPanel(); }});
 		panels_.RegisterPanel({"output", "Output", DockRegion::Bottom, true, true,
@@ -435,9 +559,14 @@ namespace BlackLight::Editor
 				"", "app.quit"});
 		menus_.AddMenu("edit", "Edit",
 			{"edit.undo", "edit.redo", "", "object.add", "object.delete"});
+		menus_.AddMenu("ui", "UI",
+			{"ui.new", "ui.open", "", "ui.save", "ui.save_as", "ui.close", "",
+				"ui.node.add_container", "ui.node.add_button", "ui.node.add_text", "",
+				"ui.node.delete", "ui.node.move_up", "ui.node.move_down"});
 		menus_.AddMenu("view", "View",
 			{"view.panel.scene", "view.panel.assets", "view.panel.inspector",
-				"view.panel.output", "view.panel.history", "",
+				"view.panel.output", "view.panel.history", "", "view.panel.folder",
+				"view.panel.hierarchy", "",
 				"theme.dark", "theme.light", "theme.midnight", "", "layout.reset"});
 		menus_.AddMenu("build", "Build",
 			{"project.validate", "", "build.configure", "build.build", "build.run"});
@@ -451,6 +580,11 @@ namespace BlackLight::Editor
 	{
 		if (event.type == EventType::QuitRequested)
 		{
+			if (!ConfirmDiscardUiTabs())
+			{
+				ui_dirty_ = true;
+				return;
+			}
 			Exit();
 			return;
 		}
@@ -492,6 +626,7 @@ namespace BlackLight::Editor
 	void EditorApplication::UpdateUi()
 	{
 		panels_.Refresh(ui_);
+		BindPanelInteractions();
 		UpdateStatusBar();
 		UpdateToolbarState();
 	}
@@ -499,13 +634,25 @@ namespace BlackLight::Editor
 	void EditorApplication::UpdateStatusBar()
 	{
 		ui_.SetText("status_message", state_.GetStatus());
-		ui_.SetText("status_undo",
-			history_.CanUndo() ? "Undo: " + history_.GetUndoName() : std::string("Undo: -"));
+		const UiDocumentTab *ui_tab = ui_docs_.GetActive();
+		const std::string undo_text = ui_tab
+			? (ui_tab->CanUndo()
+				? "Undo: " + ui_tab->history[ui_tab->undo_position - 1].description
+				: std::string("Undo: -"))
+			: (history_.CanUndo()
+				? "Undo: " + history_.GetUndoName()
+				: std::string("Undo: -"));
+		ui_.SetText("status_undo", undo_text);
 
 		std::string document = "No workspace";
 		if (state_.HasDocument())
 			document = state_.GetDocumentName() + (state_.IsModified() ? " *" : "");
 		ui_.SetText("status_document", document);
+		if (ui_tab)
+		{
+			std::string ui_document = ui_tab->title + (ui_tab->modified ? " *" : "");
+			ui_.SetText("status_document", ui_document);
+		}
 		ui_.SetText("status_project",
 			project_.HasProject() ? project_.GetMetadata().name : std::string("No project"));
 
@@ -515,6 +662,27 @@ namespace BlackLight::Editor
 		ui_.SetText("status_mode", ToString(state_.GetMode()));
 		ui_.SetText("status_theme", CurrentTheme().name);
 
+		std::string ui_status = "No UI document";
+		if (ui_tab)
+		{
+			std::string node_path = ui_tab->selection_path;
+			const BuiNode *node = ui_docs_.GetSelectedNode(*ui_tab);
+			ui_status = "UI: " + ui_tab->title + (ui_tab->modified ? " *" : "");
+			if (node)
+			{
+				ui_status += " - ";
+				ui_status += node->type == BuiNodeType::Text ? "text" : "<" + node->tag;
+				if (const BuiAttribute *id = node->type == BuiNodeType::Element
+					? node->FindAttribute("id") : nullptr)
+				{
+					ui_status += "#" + id->value;
+				}
+				if (node->type == BuiNodeType::Element)
+					ui_status += ">";
+			}
+		}
+		ui_.SetText("status_ui", ui_status);
+
 		const EditorMode mode = state_.GetMode();
 		ui_.SetClass("status_mode", "play", mode == EditorMode::Play);
 		ui_.SetClass("status_mode", "pause", mode == EditorMode::Paused);
@@ -522,11 +690,16 @@ namespace BlackLight::Editor
 
 	void EditorApplication::UpdateToolbarState()
 	{
-		ui_.SetClass("tool_save", "disabled", !state_.HasDocument());
+		ui_.SetClass("tool_save", "disabled",
+			!state_.HasDocument() && !HasActiveUiDocument());
 		ui_.SetClass("tool_add", "disabled", !state_.HasDocument());
-		ui_.SetClass("tool_delete", "disabled", !HasSelectedObject());
-		ui_.SetClass("tool_undo", "disabled", !history_.CanUndo());
-		ui_.SetClass("tool_redo", "disabled", !history_.CanRedo());
+		ui_.SetClass("tool_delete", "disabled",
+			!HasSelectedObject() && !HasUiSelection());
+		const UiDocumentTab *ui_tab = ui_docs_.GetActive();
+		ui_.SetClass("tool_undo", "disabled",
+			ui_tab ? !ui_tab->CanUndo() : !history_.CanUndo());
+		ui_.SetClass("tool_redo", "disabled",
+			ui_tab ? !ui_tab->CanRedo() : !history_.CanRedo());
 
 		const EditorMode mode = state_.GetMode();
 		ui_.SetClass("tool_mode_edit", "mode-active", mode == EditorMode::Edit);
@@ -665,6 +838,16 @@ namespace BlackLight::Editor
 		return ConfirmDiscardChanges(state_.GetDocumentName());
 	}
 
+	bool EditorApplication::ConfirmDiscardUiTabs()
+	{
+		for (const UiDocumentTab &tab : ui_docs_.GetTabs())
+		{
+			if (tab.modified && !ConfirmDiscardChanges(tab.title))
+				return false;
+		}
+		return true;
+	}
+
 	bool EditorApplication::HasSelectedObject() const
 	{
 		const Selection &selection = state_.GetSelection();
@@ -674,6 +857,56 @@ namespace BlackLight::Editor
 
 	void EditorApplication::HandlePanelAction(std::string_view action)
 	{
+		if (action.rfind("ui-open:", 0) == 0)
+		{
+			OpenUiDocument(std::filesystem::u8path(std::string(action.substr(8))));
+			return;
+		}
+		if (action.rfind("ui-select:", 0) == 0)
+		{
+			SelectUiNode(action.substr(10));
+			return;
+		}
+		if (action.rfind("ui-toggle:", 0) == 0)
+		{
+			ToggleUiNode(action.substr(10));
+			return;
+		}
+		if (action.rfind("ui-tab-close:", 0) == 0)
+		{
+			const std::string id(action.substr(13));
+			if (ui_docs_.Activate(id))
+				CloseUiDocument();
+			return;
+		}
+		if (action.rfind("ui-tab:", 0) == 0)
+		{
+			const std::string id(action.substr(7));
+			if (ui_docs_.Activate(id))
+			{
+				state_.SetStatus("Activated " + id);
+				ui_dirty_ = true;
+			}
+			return;
+		}
+		if (action.rfind("folder:", 0) == 0)
+		{
+			const std::filesystem::path path =
+				std::filesystem::u8path(std::string(action.substr(7)));
+			if (folder_expanded_.count(path))
+				folder_expanded_.erase(path);
+			else
+				folder_expanded_.insert(path);
+			ui_dirty_ = true;
+			return;
+		}
+		if (action.rfind("not-editable:", 0) == 0)
+		{
+			state_.SetStatus("Not editable here: " +
+				std::string(action.substr(13)));
+			ui_dirty_ = true;
+			return;
+		}
 		const std::size_t separator = action.find(':');
 		const std::string_view verb =
 			separator == std::string_view::npos ? action : action.substr(0, separator);
@@ -706,6 +939,7 @@ namespace BlackLight::Editor
 		if (verb == "open-project")
 		{
 			OpenProject(std::filesystem::u8path(std::string(value)));
+			return;
 		}
 	}
 
@@ -715,7 +949,206 @@ namespace BlackLight::Editor
 		const std::string command = EditorUi::FindAttribute(event.GetTargetElement(), toolbar,
 			"data-command");
 		if (!command.empty())
-			commands_.Invoke(command);
+		{
+			if (command == "file.save" && HasActiveUiDocument())
+				SaveUiDocument(false);
+			else
+				commands_.Invoke(command);
+		}
+	}
+
+	void EditorApplication::BindPanelInteractions()
+	{
+		Rml::Element *inspector = ui_.Find("panel_inspector_body");
+		if (!inspector)
+			return;
+		const auto bind_change = [this, inspector](std::string_view id,
+			std::string_view property)
+		{
+			ui_.AddListener("ui_inspector", id, "change",
+				[this, property](Rml::Event &)
+				{
+					ApplyUiProperty(property);
+				});
+		};
+		ui_.ClearListeners("ui_inspector");
+		bind_change("ui_prop_id", "id");
+		bind_change("ui_prop_class", "class");
+		bind_change("ui_prop_text", "text");
+
+		Rml::Element *hierarchy = ui_.Find("panel_hierarchy_body");
+		ui_.ClearListeners("ui_hierarchy_drag");
+		if (!hierarchy)
+			return;
+		ui_.AddListener("ui_hierarchy_drag", hierarchy, "mousedown",
+			[this, hierarchy](Rml::Event &event)
+			{
+				const std::string path = EditorUi::FindAttribute(
+					event.GetTargetElement(), hierarchy, "data-ui-node");
+				if (!path.empty())
+				{
+					ui_drag_source_ = path;
+					event.StopPropagation();
+				}
+			});
+		ui_.AddListener("ui_hierarchy_drag", hierarchy, "mousemove",
+			[this](Rml::Event &event) { UpdateUiDrag(event); });
+		ui_.AddListener("ui_hierarchy_drag", hierarchy, "mouseup",
+			[this](Rml::Event &event) { EndUiDrag(event); });
+	}
+
+	void EditorApplication::ApplyUiProperty(std::string_view property)
+	{
+		UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab)
+			return;
+		Rml::ElementFormControl *control = rmlui_dynamic_cast<Rml::ElementFormControl *>(
+			ui_.Find(std::string("ui_prop_") + std::string(property)));
+		if (!control)
+			return;
+		const std::string value = control->GetValue();
+		const BuiNodeId id = tab->model.NodeAtPath(tab->selection_path);
+		if (id == InvalidBuiNode)
+			return;
+
+		const bool applied = ui_docs_.ApplyEdit(*tab,
+			property == "text" ? "Set text" : "Set " + std::string(property),
+			[id, property, value](BuiDocumentModel &model, BuiEditResult &result)
+			{
+				if (property == "text")
+					return model.SetElementText(id, value, &result) ||
+						model.SetText(id, value, &result);
+				if (value.empty())
+					return model.RemoveAttribute(id, property, &result);
+				return model.SetAttribute(id, property, value, &result);
+			});
+		if (applied)
+		{
+			state_.SetStatus("Updated UI " + std::string(property));
+			events_.Emit({EventType::UiDocumentModified, tab->id,
+				"Set " + std::string(property)});
+			ui_dirty_ = true;
+		}
+	}
+
+	void EditorApplication::BeginUiDrag(std::string_view path)
+	{
+		ui_drag_source_ = std::string(path);
+	}
+
+	void EditorApplication::UpdateUiDrag(Rml::Event &event)
+	{
+		if (ui_drag_source_.empty())
+			return;
+		Rml::Element *hierarchy = ui_.Find("panel_hierarchy_body");
+		if (!hierarchy)
+			return;
+		const std::string path = EditorUi::FindAttribute(
+			event.GetTargetElement(), hierarchy, "data-ui-node");
+		if (path.empty())
+			return;
+		Rml::Element *row = event.GetTargetElement();
+		if (ui_drag_over_ && ui_drag_over_ != row)
+			ui_drag_over_->SetClass("drag-over", false);
+		ui_drag_over_ = row;
+		row->SetClass("drag-over", true);
+	}
+
+	void EditorApplication::EndUiDrag(Rml::Event &event)
+	{
+		const std::string source = ui_drag_source_;
+		ui_drag_source_.clear();
+		if (ui_drag_over_)
+		{
+			ui_drag_over_->SetClass("drag-over", false);
+			ui_drag_over_ = nullptr;
+		}
+		if (source.empty())
+			return;
+		Rml::Element *hierarchy = ui_.Find("panel_hierarchy_body");
+		if (!hierarchy)
+			return;
+		const std::string target = EditorUi::FindAttribute(
+			event.GetTargetElement(), hierarchy, "data-ui-node");
+		if (target.empty() || target == source)
+			return;
+		// Drop into the target element; the lower half appends as the last child.
+		ApplyUiDrop(source, target, 0);
+	}
+
+	void EditorApplication::ApplyUiDrop(std::string_view source,
+		std::string_view target, int /*mode*/)
+	{
+		UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab)
+			return;
+		const BuiNodeId source_id = tab->model.NodeAtPath(source);
+		const BuiNodeId target_id = tab->model.NodeAtPath(target);
+		const BuiNode *target_node = tab->model.Find(target_id);
+		if (source_id == InvalidBuiNode || !target_node ||
+			target_node->type != BuiNodeType::Element)
+		{
+			return;
+		}
+		const std::size_t index = target_node->children.size();
+		const bool applied = ui_docs_.ApplyEdit(*tab, "Move UI Node",
+			[source_id, target_id, index](BuiDocumentModel &model,
+				BuiEditResult &result)
+			{
+				return model.MoveNode(source_id, target_id, index, &result);
+			});
+		if (applied)
+		{
+			state_.SetStatus("Moved UI node");
+			events_.Emit({EventType::UiDocumentModified, tab->id, "Move"});
+			ui_dirty_ = true;
+		}
+	}
+
+	void EditorApplication::UpdateUiPreview(bool force)
+	{
+		Rml::Context *context = GetContext();
+		const UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!context || !tab)
+		{
+			if (preview_.IsOpen())
+			{
+				ui_.ClearListeners("ui_preview");
+				preview_.Close();
+			}
+			preview_revision_ = 0;
+			preview_tab_id_.clear();
+			return;
+		}
+
+		if (preview_tab_id_ != tab->id)
+			ui_tree_expanded_.clear();
+
+		if (force || preview_tab_id_ != tab->id ||
+			preview_revision_ != tab->model.GetRevision() || !preview_.IsOpen())
+		{
+			ui_.ClearListeners("ui_preview");
+			std::string error;
+			if (!preview_.Rebuild(*context, tab->model, error))
+			{
+				BL_LOG(LogLevel::Error, "UI", "Preview failed: " + error);
+				state_.SetStatus("UI preview failed: " + error);
+				preview_.Close();
+				preview_revision_ = 0;
+				preview_tab_id_.clear();
+				return;
+			}
+			preview_tab_id_ = tab->id;
+			preview_revision_ = tab->model.GetRevision();
+			Rml::ElementDocument *document = preview_.GetDocument();
+			if (document)
+			{
+				ui_.AddListener("ui_preview", document, "click",
+					[this](Rml::Event &event) { preview_.HandleClick(event); });
+			}
+		}
+		preview_.AnchorTo(ui_.Find("viewport_preview_frame"));
+		preview_.Update();
 	}
 
 	std::string EditorApplication::RenderScenePanel() const
@@ -764,10 +1197,221 @@ namespace BlackLight::Editor
 		return html;
 	}
 
+	std::string EditorApplication::RenderFolderPanel() const
+	{
+		if (!project_.HasProject())
+		{
+			return "<div class=\"empty\">No project is open.<br/><br/>"
+				"<span class=\"palette-button\" data-action=\"command:project.new\">"
+				"New Project...</span></div>";
+		}
+
+		std::string html;
+		std::error_code error;
+		const auto render_directory = [&](const auto &self,
+			const std::filesystem::path &directory, int depth) -> void
+		{
+			if (depth > 12)
+				return;
+			std::vector<std::filesystem::directory_entry> entries;
+			for (std::filesystem::directory_iterator it(directory, error), end;
+				it != end && !error; it.increment(error))
+			{
+				if (it->is_directory(error))
+				{
+					if (!IsIgnoredDirectory(it->path().filename().u8string()))
+						entries.push_back(*it);
+				}
+				else if (it->is_regular_file(error))
+				{
+					entries.push_back(*it);
+				}
+			}
+			std::sort(entries.begin(), entries.end(),
+				[](const auto &left, const auto &right)
+				{
+					std::error_code left_error;
+					std::error_code right_error;
+					const bool left_directory = left.is_directory(left_error);
+					const bool right_directory = right.is_directory(right_error);
+					if (left_directory != right_directory)
+						return left_directory;
+					return left.path().filename().u8string() <
+						right.path().filename().u8string();
+				});
+
+			for (const auto &entry : entries)
+			{
+				std::error_code entry_error;
+				const bool is_directory = entry.is_directory(entry_error);
+				const std::filesystem::path path = entry.path();
+				const bool expanded = is_directory && folder_expanded_.count(path) != 0;
+				const std::string indent = std::to_string(4 + depth * 14);
+				html += "<div class=\"folder-row\"";
+				if (is_directory)
+				{
+					html += " data-action=\"folder:" +
+						EditorUi::Escape(path.u8string()) + "\"";
+				}
+				else if (FileExtension(path) == "bui")
+				{
+					html += " data-action=\"ui-open:" +
+						EditorUi::Escape(path.u8string()) + "\"";
+				}
+				else if (FileExtension(path) == "blacklight")
+				{
+					html += " data-action=\"open-project:" +
+						EditorUi::Escape(path.u8string()) + "\"";
+				}
+				else
+				{
+					html += " data-action=\"not-editable:" +
+						EditorUi::Escape(path.u8string()) + "\"";
+				}
+				html += " style=\"padding-left: " + indent + "dp;\">";
+				html += "<span class=\"folder-glyph\">";
+				html += is_directory ? (expanded ? "v" : ">") : FileGlyph(path, false);
+				html += "</span><span class=\"folder-name\">" +
+					EditorUi::Escape(path.filename().u8string()) + "</span>";
+				if (!is_directory)
+				{
+					html += "<span class=\"kind\">" +
+						EditorUi::Escape(FileExtension(path)) + "</span>";
+				}
+				html += "</div>";
+				if (expanded)
+					self(self, path, depth + 1);
+			}
+		};
+
+		render_directory(render_directory, project_.GetProjectRoot(), 0);
+		if (html.empty())
+			html = "<div class=\"empty\">The project directory is empty.</div>";
+		return html;
+	}
+
+	std::string EditorApplication::RenderHierarchyPanel() const
+	{
+		const UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab)
+		{
+			return "<div class=\"empty\">Open a .bui document from Folder or "
+				"use UI &gt; New UI Document.</div>";
+		}
+
+		std::string html =
+			"<div class=\"ui-doc-tabs\">";
+		for (const UiDocumentTab &document : ui_docs_.GetTabs())
+		{
+			html += "<div class=\"ui-doc-tab";
+			if (document.id == tab->id)
+				html += " active";
+			html += "\" data-action=\"ui-tab:" + EditorUi::Escape(document.id) + "\">" +
+				EditorUi::Escape(document.title) + (document.modified ? " *" : "") +
+				"<span class=\"ui-doc-tab-close\" data-action=\"ui-tab-close:" +
+				EditorUi::Escape(document.id) + "\">x</span></div>";
+		}
+		html += "</div>";
+		html += "<div class=\"ui-palette\">";
+		html += "<span class=\"palette-button\" data-action=\"command:ui.node.add_container\">"
+			"+ Container</span>";
+		html += "<span class=\"palette-button\" data-action=\"command:ui.node.add_button\">"
+			"+ Button</span>";
+		html += "<span class=\"palette-button\" data-action=\"command:ui.node.add_text\">"
+			"+ Text</span>";
+		html += "<span class=\"palette-button\" data-action=\"command:ui.node.delete\">"
+			"Delete</span>";
+		html += "<span class=\"palette-button\" data-action=\"command:ui.node.move_up\">"
+			"Up</span>";
+		html += "<span class=\"palette-button\" data-action=\"command:ui.node.move_down\">"
+			"Down</span>";
+		html += "</div>";
+		if (!tab->model.GetWarning().message.empty())
+		{
+			html += "<div class=\"panel-hint\">Parse warning: " +
+				EditorUi::Escape(tab->model.GetWarning().message) + "</div>";
+		}
+
+		const auto render_node = [&](const auto &self, BuiNodeId id, int depth) -> void
+		{
+			const BuiNode *node = tab->model.Find(id);
+			if (!node)
+				return;
+			const std::string path = tab->model.PathOf(id);
+			const bool expanded = ui_tree_expanded_.count(path) != 0;
+			const bool selected = tab->selection_path == path;
+			html += "<div class=\"tree-row";
+			if (selected)
+				html += " selected";
+			html += "\" data-ui-node=\"" + EditorUi::Escape(path) +
+				"\" data-action=\"ui-select:" + EditorUi::Escape(path) + "\"";
+			html += " style=\"padding-left: " + std::to_string(4 + depth * 14) + "dp;\">";
+			if (node->type == BuiNodeType::Element && !node->children.empty())
+			{
+				html += "<span class=\"tree-toggle\" data-action=\"ui-toggle:" +
+					EditorUi::Escape(path) + "\">" + (expanded ? "v" : ">") + "</span>";
+			}
+			else
+			{
+				html += "<span class=\"tree-toggle\"></span>";
+			}
+
+			if (node->type == BuiNodeType::Text)
+			{
+				std::string preview = node->text.substr(0, 24);
+				if (node->text.size() > preview.size())
+					preview += "...";
+				html += "<span class=\"tree-text\">\"" +
+					EditorUi::Escape(preview) + "\"</span>";
+			}
+			else
+			{
+				html += "<span class=\"tree-tag\">" + EditorUi::Escape(node->tag) + "</span>";
+				if (const BuiAttribute *id_attribute = node->FindAttribute("id"))
+					html += "<span class=\"tree-id\">#" +
+						EditorUi::Escape(id_attribute->value) + "</span>";
+				if (const BuiAttribute *class_attribute = node->FindAttribute("class"))
+				{
+					const std::string classes = class_attribute->value;
+					std::size_t begin = 0;
+					while (begin < classes.size())
+					{
+						const std::size_t space = classes.find(' ', begin);
+						const std::string_view item = std::string_view(classes).substr(begin,
+							space == std::string::npos ? std::string::npos : space - begin);
+						if (!item.empty())
+							html += "<span class=\"tree-class\">." +
+								EditorUi::Escape(item) + "</span>";
+						if (space == std::string::npos)
+							break;
+						begin = space + 1;
+					}
+				}
+			}
+			html += "</div>";
+			if (expanded)
+			{
+				for (const BuiNodeId child : node->children)
+					self(self, child, depth + 1);
+			}
+		};
+
+		const BuiNode *root = tab->model.Find(tab->model.GetRoot());
+		if (!root)
+			return html + "<div class=\"empty\">The document tree is unavailable.</div>";
+		for (const BuiNodeId child : root->children)
+			render_node(render_node, child, 0);
+		return html;
+	}
+
 	std::string EditorApplication::RenderInspectorPanel() const
 	{
+		const UiDocumentTab *ui_tab = ui_docs_.GetActive();
 		if (!state_.HasDocument())
-			return "<div class=\"empty\">No workspace is open.</div>";
+		{
+			if (!ui_tab)
+				return "<div class=\"empty\">No workspace or UI document is open.</div>";
+		}
 
 		const auto row = [](std::string_view label, std::string_view value)
 		{
@@ -776,7 +1420,52 @@ namespace BlackLight::Editor
 				EditorUi::Escape(value) + "</span></div>";
 		};
 
-		std::string html = "<div class=\"inspector-section\">Workspace</div>";
+		std::string html;
+		if (ui_tab)
+		{
+			html += "<div class=\"inspector-section\">UI Document</div>";
+			html += row("Name", ui_tab->title);
+			html += row("Path", ui_tab->path.empty()
+				? std::string("Not saved yet") : ui_tab->path.u8string());
+			html += row("Modified", ui_tab->modified ? "Yes" : "No");
+			const BuiNode *node = ui_docs_.GetSelectedNode(*ui_tab);
+			if (node)
+			{
+				html += "<div class=\"inspector-section\">Node</div>";
+				html += row("Type", node->type == BuiNodeType::Text
+					? std::string("Text") : node->tag);
+				html += row("Path", ui_tab->selection_path);
+				if (node->type == BuiNodeType::Element)
+				{
+					const auto attribute_value = [node](std::string_view name)
+					{
+						const BuiAttribute *attribute = node->FindAttribute(name);
+						return attribute ? attribute->value : std::string();
+					};
+					html += "<div class=\"ui-property\"><span class=\"inspector-label\">"
+						"id</span><input id=\"ui_prop_id\" class=\"ui-input\" type=\"text\" value=\"" +
+						EditorUi::Escape(attribute_value("id")) + "\"/></div>";
+					html += "<div class=\"ui-property\"><span class=\"inspector-label\">"
+						"class</span><input id=\"ui_prop_class\" class=\"ui-input\" type=\"text\" "
+						"value=\"" + EditorUi::Escape(attribute_value("class")) + "\"/></div>";
+				}
+				else
+				{
+					html += "<div class=\"ui-property\"><span class=\"inspector-label\">"
+						"text</span><input id=\"ui_prop_text\" class=\"ui-input\" type=\"text\" "
+						"value=\"" + EditorUi::Escape(node->text) + "\"/></div>";
+				}
+			}
+			else
+			{
+				html += "<div class=\"panel-hint\">Select a node in Hierarchy.</div>";
+			}
+		}
+
+		if (!state_.HasDocument())
+			return html;
+
+		html += "<div class=\"inspector-section\">Workspace</div>";
 		html += row("Name", state_.GetDocumentName());
 		const std::string path = state_.GetDocumentPath().empty()
 			? std::string("Not saved yet")
@@ -864,6 +1553,10 @@ namespace BlackLight::Editor
 
 	std::string EditorApplication::RenderViewportPanel() const
 	{
+		if (ui_docs_.GetActive())
+		{
+			return "<div id=\"viewport_preview_frame\" class=\"viewport-preview-frame\"></div>";
+		}
 		std::string html = "<div class=\"viewport-hero\">";
 		if (project_.HasProject())
 		{
@@ -936,6 +1629,302 @@ namespace BlackLight::Editor
 	{
 		wizard_.Show("MyProject", default_project_location_);
 		ui_dirty_ = true;
+	}
+
+	std::filesystem::path EditorApplication::UiDirectory() const
+	{
+		if (!project_.HasProject())
+			return {};
+		return project_.GetProjectRoot() / "ui";
+	}
+
+	bool EditorApplication::NewUiDocument()
+	{
+		const std::filesystem::path directory = UiDirectory();
+		std::error_code error;
+		if (!directory.empty())
+			std::filesystem::create_directories(directory, error);
+		std::filesystem::path suggestion = directory.empty()
+			? std::filesystem::path("Untitled.bui")
+			: directory / "Untitled.bui";
+		std::string message;
+		UiDocumentTab *tab = ui_docs_.CreateNew(suggestion, message);
+		if (!tab)
+		{
+			state_.SetStatus("Failed to create UI document: " + message);
+			return false;
+		}
+		state_.SetStatus("Created " + tab->title);
+		events_.Emit({EventType::UiDocumentsChanged, tab->id, tab->title});
+		ui_tree_expanded_.insert(tab->model.PathOf(tab->model.GetRoot()));
+		ui_dirty_ = true;
+		return true;
+	}
+
+	bool EditorApplication::OpenUiDocumentDialog()
+	{
+		std::filesystem::path initial = UiDirectory();
+		if (initial.empty())
+			initial = GetExecutableDirectory();
+		const std::filesystem::path path = ShowOpenBuiDialog(initial);
+		if (path.empty())
+			return false;
+		return OpenUiDocument(path);
+	}
+
+	bool EditorApplication::OpenUiDocument(const std::filesystem::path &path)
+	{
+		std::string error;
+		UiDocumentTab *tab = ui_docs_.Open(path, error);
+		if (!tab)
+		{
+			state_.SetStatus("Failed to open UI document: " + error);
+			BL_LOG(LogLevel::Error, "UI", "Failed to open " + path.u8string() +
+				": " + error);
+			return false;
+		}
+		// Select the first real element so editing can start immediately.
+		const BuiNode *root_node = tab->model.Find(tab->model.GetRoot());
+		if (tab->selection_path.empty() && root_node && !root_node->children.empty())
+			tab->selection_path = tab->model.PathOf(root_node->children.front());
+		state_.SetStatus("Opened " + tab->title);
+		if (!error.empty())
+			BL_LOG(LogLevel::Warning, "UI", tab->title + ": " + error);
+		events_.Emit({EventType::UiDocumentsChanged, tab->id, tab->title});
+		ui_dirty_ = true;
+		return true;
+	}
+
+	bool EditorApplication::SaveUiDocument(bool save_as)
+	{
+		UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab)
+		{
+			state_.SetStatus("There is no UI document to save");
+			return false;
+		}
+		std::filesystem::path path = tab->path;
+		if (save_as || path.empty())
+		{
+			path = ShowSaveBuiDialog(path.empty()
+				? (UiDirectory().empty() ? GetExecutableDirectory() /
+					(tab->title.empty() ? "Untitled.bui" : tab->title)
+					: UiDirectory() / (tab->title.empty() ? "Untitled.bui" : tab->title))
+				: path);
+			if (path.empty())
+				return false;
+		}
+		std::string error;
+		if (!ui_docs_.Save(*tab, path, error))
+		{
+			state_.SetStatus("Failed to save UI document: " + error);
+			BL_LOG(LogLevel::Error, "UI", "Failed to save " + path.u8string() +
+				": " + error);
+			return false;
+		}
+		state_.SetStatus("Saved " + tab->title);
+		events_.Emit({EventType::UiDocumentModified, tab->id, tab->title});
+		ui_dirty_ = true;
+		return true;
+	}
+
+	bool EditorApplication::CloseUiDocument()
+	{
+		UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab)
+			return false;
+		const std::string id = tab->id;
+		const std::string title = tab->title;
+		if (tab->modified && !ConfirmDiscardChanges(tab->title))
+			return false;
+		std::string error;
+		if (!ui_docs_.Close(id, true, error))
+			return false;
+		state_.SetStatus("Closed " + title);
+		events_.Emit({EventType::UiDocumentsChanged, id, title});
+		ui_dirty_ = true;
+		return true;
+	}
+
+	bool EditorApplication::HasActiveUiDocument() const
+	{
+		return ui_docs_.GetActive() != nullptr;
+	}
+
+	bool EditorApplication::HasUiSelection() const
+	{
+		return ui_docs_.GetSelectedNode() != nullptr;
+	}
+
+	void EditorApplication::SelectUiNode(std::string_view path)
+	{
+		if (!ui_docs_.SetSelection(path))
+			return;
+		const BuiNode *node = ui_docs_.GetSelectedNode();
+		state_.SetStatus(node
+			? "UI selection: " + (node->type == BuiNodeType::Text
+				? std::string("text") : "<" + node->tag + ">")
+			: std::string("UI selection cleared"));
+		events_.Emit({EventType::UiSelectionChanged, std::string(path), {}});
+		ui_dirty_ = true;
+	}
+
+	void EditorApplication::ToggleUiNode(std::string_view path)
+	{
+		if (ui_tree_expanded_.count(std::string(path)))
+			ui_tree_expanded_.erase(std::string(path));
+		else
+			ui_tree_expanded_.insert(std::string(path));
+		ui_dirty_ = true;
+	}
+
+	bool EditorApplication::AddUiNode(std::string_view kind)
+	{
+		UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab)
+			return false;
+		const BuiNodeId selected_id = tab->model.NodeAtPath(tab->selection_path);
+		const BuiNode *selected = selected_id == InvalidBuiNode
+			? nullptr : tab->model.Find(selected_id);
+		BuiNodeId parent = tab->model.GetRoot();
+		BuiNodeId insertion_sibling = InvalidBuiNode;
+		if (selected && selected->type == BuiNodeType::Element &&
+			!selected->self_closing)
+		{
+			parent = selected_id;
+		}
+		else if (selected && selected->parent != InvalidBuiNode)
+		{
+			parent = selected->parent;
+			insertion_sibling = selected_id;
+		}
+		const BuiNode *parent_node = tab->model.Find(parent);
+		std::size_t index = parent_node ? parent_node->children.size() : 0;
+		if (insertion_sibling != InvalidBuiNode && parent_node)
+		{
+			const auto sibling = std::find(parent_node->children.begin(),
+				parent_node->children.end(), insertion_sibling);
+			if (sibling != parent_node->children.end())
+				index = static_cast<std::size_t>(
+					std::distance(parent_node->children.begin(), sibling)) + 1;
+		}
+
+		BuiNodeTemplate node;
+		std::string description;
+		if (kind == "text")
+		{
+			node.type = BuiNodeType::Text;
+			node.text = "Text";
+			description = "Add Text";
+		}
+		else
+		{
+			node.tag = std::string(kind);
+			node.attributes = {{"id", ""}, {"class", ""}};
+			if (kind == "button")
+				node.text = "Button";
+			description = kind == "button" ? "Add Button" : "Add Container";
+		}
+
+		const bool applied = ui_docs_.ApplyEdit(*tab, description,
+			[parent, index, node](BuiDocumentModel &model, BuiEditResult &result)
+			{
+				return model.InsertNode(parent, index, node, &result);
+			});
+		if (applied)
+		{
+			state_.SetStatus(description);
+			ui_tree_expanded_.insert(tab->model.PathOf(parent));
+			events_.Emit({EventType::UiDocumentModified, tab->id, description});
+			ui_dirty_ = true;
+		}
+		return applied;
+	}
+
+	bool EditorApplication::DeleteUiNode()
+	{
+		UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab)
+			return false;
+		const std::string path = tab->selection_path;
+		const BuiNodeId id = tab->model.NodeAtPath(path);
+		if (id == InvalidBuiNode || id == tab->model.GetRoot())
+			return false;
+		const BuiNode *node = tab->model.Find(id);
+		const std::string label = node->type == BuiNodeType::Text
+			? std::string("text") : "<" + node->tag + ">";
+		const bool applied = ui_docs_.ApplyEdit(*tab, "Delete " + label,
+			[id](BuiDocumentModel &model, BuiEditResult &result)
+			{
+				return model.RemoveNode(id, &result);
+			});
+		if (applied)
+		{
+			state_.SetStatus("Deleted UI node " + label);
+			events_.Emit({EventType::UiDocumentModified, tab->id, "Delete"});
+			ui_dirty_ = true;
+		}
+		return applied;
+	}
+
+	bool EditorApplication::MoveUiNode(int direction)
+	{
+		UiDocumentTab *tab = ui_docs_.GetActive();
+		if (!tab || direction == 0)
+			return false;
+		const BuiNodeId id = tab->model.NodeAtPath(tab->selection_path);
+		const BuiNode *node = tab->model.Find(id);
+		if (!node || node->parent == InvalidBuiNode)
+			return false;
+		const BuiNode *parent = tab->model.Find(node->parent);
+		if (!parent)
+			return false;
+		const auto it = std::find(parent->children.begin(), parent->children.end(), id);
+		if (it == parent->children.end())
+			return false;
+		const int current = static_cast<int>(std::distance(parent->children.begin(), it));
+		const int target = current + direction;
+		if (target < 0 || target >= static_cast<int>(parent->children.size()))
+			return false;
+		const BuiNodeId new_parent = node->parent;
+		const bool applied = ui_docs_.ApplyEdit(*tab,
+			direction < 0 ? "Move UI Node Up" : "Move UI Node Down",
+			[id, new_parent, target](BuiDocumentModel &model, BuiEditResult &result)
+			{
+				return model.MoveNode(id, new_parent, static_cast<std::size_t>(target),
+					&result);
+			});
+		if (applied)
+		{
+			state_.SetStatus("Moved UI node");
+			events_.Emit({EventType::UiDocumentModified, tab->id, "Move"});
+			ui_dirty_ = true;
+		}
+		return applied;
+	}
+
+	bool EditorApplication::UndoUiDocument()
+	{
+		std::string description;
+		if (!ui_docs_.Undo(description))
+			return false;
+		state_.SetStatus("Undo: " + description);
+		events_.Emit({EventType::UiDocumentModified,
+			ui_docs_.GetActive() ? ui_docs_.GetActive()->id : std::string(), "Undo"});
+		ui_dirty_ = true;
+		return true;
+	}
+
+	bool EditorApplication::RedoUiDocument()
+	{
+		std::string description;
+		if (!ui_docs_.Redo(description))
+			return false;
+		state_.SetStatus("Redo: " + description);
+		events_.Emit({EventType::UiDocumentModified,
+			ui_docs_.GetActive() ? ui_docs_.GetActive()->id : std::string(), "Redo"});
+		ui_dirty_ = true;
+		return true;
 	}
 
 	bool EditorApplication::CreateProject(const ProjectOptions &options, std::string &error)

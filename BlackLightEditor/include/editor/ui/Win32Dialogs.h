@@ -21,6 +21,14 @@ namespace BlackLight::Editor
 	std::filesystem::path ShowOpenProjectDialog(
 		const std::filesystem::path &initial_directory);
 
+	/// Shows the native open dialog for `.bui` UI documents.
+	std::filesystem::path ShowOpenBuiDialog(
+		const std::filesystem::path &initial_directory);
+
+	/// Shows the native save dialog for `.bui` UI documents.
+	std::filesystem::path ShowSaveBuiDialog(
+		const std::filesystem::path &suggested_path);
+
 	/// Shows the native folder picker used by the project wizard.
 	/// Returns an empty path when the user cancels.
 	std::filesystem::path ShowBrowseFolderDialog(

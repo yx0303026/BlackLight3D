@@ -8,6 +8,8 @@
 #include "editor/core/EditorTheme.h"
 #include "editor/project/ProjectManager.h"
 #include "editor/project/RecentProjects.h"
+#include "editor/uidoc/UiDocumentSessions.h"
+#include "editor/ui/BuiPreview.h"
 #include "editor/ui/EditorMenu.h"
 #include "editor/ui/EditorUi.h"
 #include "editor/ui/LogBuffer.h"
@@ -16,13 +18,16 @@
 #include "engine/Window.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace Rml
 {
+	class Element;
 	class Event;
 }
 
@@ -86,11 +91,37 @@ namespace BlackLight::Editor
 		bool ValidateProject();
 		bool UpdateProjectScaffolding();
 
+		bool NewUiDocument();
+		bool OpenUiDocumentDialog();
+		bool OpenUiDocument(const std::filesystem::path &path);
+		bool SaveUiDocument(bool save_as);
+		bool CloseUiDocument();
+		bool ConfirmDiscardUiTabs();
+		bool AddUiNode(std::string_view kind);
+		bool DeleteUiNode();
+		bool MoveUiNode(int direction);
+		bool UndoUiDocument();
+		bool RedoUiDocument();
+		bool HasUiSelection() const;
+		bool HasActiveUiDocument() const;
+		std::filesystem::path UiDirectory() const;
+		void SelectUiNode(std::string_view path);
+		void ToggleUiNode(std::string_view path);
+		void UpdateUiPreview(bool force = false);
+		void ApplyUiProperty(std::string_view property);
+		void BindPanelInteractions();
+		void BeginUiDrag(std::string_view path);
+		void UpdateUiDrag(Rml::Event &event);
+		void EndUiDrag(Rml::Event &event);
+		void ApplyUiDrop(std::string_view source, std::string_view target, int mode);
+
 		void HandlePanelAction(std::string_view action);
 		void HandleToolbarClick(Rml::Event &event);
 
 		std::string RenderScenePanel() const;
 		std::string RenderAssetsPanel() const;
+		std::string RenderFolderPanel() const;
+		std::string RenderHierarchyPanel() const;
 		std::string RenderInspectorPanel() const;
 		std::string RenderOutputPanel() const;
 		std::string RenderHistoryPanel() const;
@@ -109,6 +140,8 @@ namespace BlackLight::Editor
 		PanelManager panels_;
 		EditorMenu menus_;
 		ProjectManager project_;
+		UiDocumentSessions ui_docs_;
+		BuiPreview preview_;
 		RecentProjects recent_projects_;
 		ProjectWizard wizard_;
 		LogBuffer logs_;
@@ -116,6 +149,12 @@ namespace BlackLight::Editor
 		std::filesystem::path default_project_location_;
 		std::string theme_id_ = "dark";
 		std::size_t last_log_revision_ = 0;
+		std::uint64_t preview_revision_ = 0;
+		std::string preview_tab_id_;
+		std::string ui_drag_source_;
+		Rml::Element *ui_drag_over_ = nullptr;
+		std::set<std::filesystem::path> folder_expanded_;
+		std::set<std::string> ui_tree_expanded_;
 		bool icon_font_loaded_ = false;
 		bool ui_dirty_ = true;
 	};

@@ -145,11 +145,11 @@ target_include_directories(blacklight_engine_static
 
 target_link_libraries(blacklight_engine
 	PUBLIC RmlUi::Core
-	PRIVATE opengl32 d3d11 dxgi comctl32
+	PRIVATE opengl32 d3d11 dxgi d3dcompiler comctl32
 )
 target_link_libraries(blacklight_engine_static
 	PUBLIC RmlUi::Core
-	PRIVATE opengl32 d3d11 dxgi comctl32
+	PRIVATE opengl32 d3d11 dxgi d3dcompiler comctl32
 )
 target_compile_definitions(blacklight_engine PRIVATE BLACKLIGHT_BUILD_SHARED)
 target_compile_definitions(blacklight_engine_static PUBLIC BLACKLIGHT_STATIC)

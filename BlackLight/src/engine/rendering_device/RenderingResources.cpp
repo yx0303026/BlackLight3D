@@ -1,27 +1,10 @@
 #include "engine/rendering_device/RenderingResources.h"
+#include "RenderingResourcesInternal.h"
 
 #include <utility>
 
 namespace BlackLight::Engine::Rendering
 {
-	/// Stores normalized metadata for a buffer handle.
-	class Buffer::Impl
-	{
-	public:
-		std::size_t size = 0;
-	};
-
-	/// Stores normalized metadata for a texture handle.
-	class Texture::Impl
-	{
-	public:
-		std::uint32_t width = 0;
-		std::uint32_t height = 0;
-	};
-
-	/// Stores an opaque graphics pipeline handle.
-	class GraphicsPipeline::Impl {};
-
 	/// Creates an empty buffer.
 	Buffer::Buffer() = default;
 	/// Releases a buffer.

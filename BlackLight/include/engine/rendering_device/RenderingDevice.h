@@ -27,6 +27,17 @@ namespace BlackLight::Engine
 		struct TextureDesc;
 		struct GraphicsPipelineDesc;
 
+		/// Reports normalized limits and optional features supported by a device.
+		struct DeviceCapabilities
+		{
+			std::uint32_t max_texture_width = 0;
+			std::uint32_t max_texture_height = 0;
+			std::uint32_t max_render_targets = 1;
+			std::uint32_t max_samples = 1;
+			bool compute_shaders = false;
+			bool storage_buffers = false;
+		};
+
 		/// Selects the graphics API used by a rendering device.
 		enum class RenderingBackend
 		{
@@ -112,6 +123,8 @@ namespace BlackLight::Engine
 			virtual bool ProcessEvents() = 0;
 			/// Begins a frame and clears the default color/depth target.
 			virtual void BeginFrame() = 0;
+			/// Begins a frame on a texture color target and optional depth target.
+			virtual void BeginFrame(const Texture *color_target, const Texture *depth_target) = 0;
 			/// Renders the optional UI overlay after application drawing.
 			virtual void RenderUi() = 0;
 			/// Presents the current frame to the configured surface.
@@ -124,6 +137,8 @@ namespace BlackLight::Engine
 			virtual void SetInputSink(InputState *input) noexcept = 0;
 			/// Returns the selected backend.
 			virtual RenderingBackend GetBackend() const noexcept = 0;
+			/// Returns device limits and optional features.
+			virtual DeviceCapabilities GetCapabilities() const noexcept = 0;
 			/// Returns the native window handle, or zero if unavailable.
 			virtual NativeWindowHandle GetNativeWindow() const noexcept = 0;
 			/// Returns the optional RmlUi context, or null when UI is disabled.

@@ -31,6 +31,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		bool ProcessEvents() override;
 		/// Clears the frame target before application rendering.
 		void BeginFrame() override;
+		/// Clears and binds an optional texture render target.
+		void BeginFrame(const Texture *color_target, const Texture *depth_target) override;
 		/// Renders the optional RmlUi overlay.
 		void RenderUi() override;
 		/// Presents the frame.
@@ -43,6 +45,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		void SetInputSink(InputState *input) noexcept override;
 		/// Returns the selected API.
 		RenderingBackend GetBackend() const noexcept override;
+		/// Returns device limits and optional features.
+		DeviceCapabilities GetCapabilities() const noexcept override;
 		/// Returns the Win32 window handle.
 		NativeWindowHandle GetNativeWindow() const noexcept override;
 		/// Returns the optional RmlUi context.
@@ -79,6 +83,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		bool ProcessEvents() override;
 		/// Clears the swap-chain target.
 		void BeginFrame() override;
+		/// Clears and binds an optional texture render target.
+		void BeginFrame(const Texture *color_target, const Texture *depth_target) override;
 		/// Renders the optional UI overlay.
 		void RenderUi() override;
 		/// Presents the frame.
@@ -91,6 +97,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		void SetInputSink(InputState *input) noexcept override;
 		/// Returns the selected API.
 		RenderingBackend GetBackend() const noexcept override;
+		/// Returns device limits and optional features.
+		DeviceCapabilities GetCapabilities() const noexcept override;
 		/// Returns the Win32 window handle.
 		NativeWindowHandle GetNativeWindow() const noexcept override;
 		/// Returns no UI service until a D3D11 UI renderer is initialized.

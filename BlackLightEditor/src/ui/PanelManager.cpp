@@ -287,6 +287,13 @@ namespace BlackLight::Editor
 		return active_[RegionIndex(region)];
 	}
 
+	bool PanelManager::IsPanelActive(std::string_view id) const
+	{
+		const PanelDescriptor *panel = FindPanel(id);
+		return panel && panel->visible &&
+			GetActivePanel(panel->region) == id;
+	}
+
 	const PanelDescriptor *PanelManager::FindPanel(std::string_view id) const
 	{
 		for (const auto &panel : panels_)

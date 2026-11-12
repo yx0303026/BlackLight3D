@@ -195,6 +195,44 @@ namespace BlackLight::Editor
 					std::string(expected_template_version) + "' is available");
 		}
 
+		const std::vector<ProjectIssue> ui_issues = ValidateUiDirectory(project_directory);
+		issues.insert(issues.end(), ui_issues.begin(), ui_issues.end());
+
+		return issues;
+	}
+
+	std::vector<ProjectIssue> ProjectValidator::ValidateUiDirectory(
+		const std::filesystem::path &project_directory)
+	{
+		std::vector<ProjectIssue> issues;
+		const std::filesystem::path ui_directory = project_directory / "ui";
+		if (!IsDirectory(ui_directory))
+		{
+			AddIssue(issues, ProjectIssueSeverity::Warning,
+				"Missing ui directory; create ui/Main.bui for the default interface",
+				ui_directory);
+			return issues;
+		}
+
+		bool has_document = false;
+		std::error_code error;
+		for (std::filesystem::directory_iterator it(ui_directory, error), end;
+			it != end && !error; it.increment(error))
+		{
+			if (!it->is_regular_file(error))
+				continue;
+			const std::string extension = it->path().extension().u8string();
+			if (extension == ".bui")
+			{
+				has_document = true;
+				break;
+			}
+		}
+		if (!has_document)
+		{
+			AddIssue(issues, ProjectIssueSeverity::Warning,
+				"The ui directory contains no .bui documents", ui_directory);
+		}
 		return issues;
 	}
 
