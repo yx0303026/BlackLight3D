@@ -13,6 +13,9 @@ namespace BlackLight::Engine
 		FrameStatsSnapshot snapshot{};
 		double fps_elapsed = 0.0;
 		std::uint64_t fps_frames = 0;
+		std::uint64_t frame_draw_calls = 0;
+		std::uint64_t frame_vertices = 0;
+		std::uint64_t frame_texture_switches = 0;
 		bool has_previous_frame = false;
 	};
 
@@ -39,9 +42,9 @@ namespace BlackLight::Engine
 		}
 		impl_->previous_frame_start = impl_->frame_start;
 		impl_->has_previous_frame = true;
-		impl_->snapshot.draw_calls = 0;
-		impl_->snapshot.vertices = 0;
-		impl_->snapshot.texture_switches = 0;
+		impl_->frame_draw_calls = 0;
+		impl_->frame_vertices = 0;
+		impl_->frame_texture_switches = 0;
 	}
 	/// Records the CPU duration for the active frame.
 	void FrameStats::EndFrame()
@@ -49,13 +52,16 @@ namespace BlackLight::Engine
 		const auto now = std::chrono::steady_clock::now();
 		impl_->snapshot.cpu_frame_milliseconds =
 			std::chrono::duration<double, std::milli>(now - impl_->frame_start).count();
+		impl_->snapshot.draw_calls = impl_->frame_draw_calls;
+		impl_->snapshot.vertices = impl_->frame_vertices;
+		impl_->snapshot.texture_switches = impl_->frame_texture_switches;
 	}
 	/// Adds one rendered draw and its texture-switch count.
 	void FrameStats::RecordDraw(std::uint64_t vertices, bool texture_changed) noexcept
 	{
-		++impl_->snapshot.draw_calls;
-		impl_->snapshot.vertices += vertices;
-		impl_->snapshot.texture_switches += texture_changed ? 1u : 0u;
+		++impl_->frame_draw_calls;
+		impl_->frame_vertices += vertices;
+		impl_->frame_texture_switches += texture_changed ? 1u : 0u;
 	}
 	/// Updates the last completed GPU frame duration.
 	void FrameStats::SetGpuFrameMilliseconds(double milliseconds) noexcept
