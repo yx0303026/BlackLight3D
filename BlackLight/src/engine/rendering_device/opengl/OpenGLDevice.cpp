@@ -98,7 +98,7 @@ namespace BlackLight::Engine::Rendering::Detail
 	public:
 		/// Forwards native input to the engine snapshot and the official RmlUi handler.
 		static LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam,
-			LPARAM lparam, UINT_PTR, DWORD_PTR reference)
+												LPARAM lparam, UINT_PTR, DWORD_PTR reference)
 		{
 			auto &self = *reinterpret_cast<Impl *>(reference);
 			if (message == WM_CLOSE)
@@ -114,7 +114,7 @@ namespace BlackLight::Engine::Rendering::Detail
 				{
 					const auto &bounds = *reinterpret_cast<const RECT *>(lparam);
 					SetWindowPos(window, nullptr, bounds.left, bounds.top,
-						bounds.right - bounds.left, bounds.bottom - bounds.top, SWP_NOZORDER | SWP_NOACTIVATE);
+								 bounds.right - bounds.left, bounds.bottom - bounds.top, SWP_NOZORDER | SWP_NOACTIVATE);
 					self.SynchronizeSurface();
 					return 0;
 				}
@@ -125,22 +125,27 @@ namespace BlackLight::Engine::Rendering::Detail
 			{
 				switch (message)
 				{
-				case WM_KEYDOWN: case WM_SYSKEYDOWN:
+				case WM_KEYDOWN:
+				case WM_SYSKEYDOWN:
 					self.input->SetKeyDown(static_cast<std::uint32_t>(wparam), true);
 					break;
-				case WM_KEYUP: case WM_SYSKEYUP:
+				case WM_KEYUP:
+				case WM_SYSKEYUP:
 					self.input->SetKeyDown(static_cast<std::uint32_t>(wparam), false);
 					break;
 				case WM_MOUSEMOVE:
 					self.input->SetMousePosition({static_cast<float>(GET_X_LPARAM(lparam)), static_cast<float>(GET_Y_LPARAM(lparam))});
 					break;
-				case WM_LBUTTONDOWN: case WM_LBUTTONUP:
+				case WM_LBUTTONDOWN:
+				case WM_LBUTTONUP:
 					self.input->SetMouseButtonDown(MouseButton::Left, message == WM_LBUTTONDOWN);
 					break;
-				case WM_RBUTTONDOWN: case WM_RBUTTONUP:
+				case WM_RBUTTONDOWN:
+				case WM_RBUTTONUP:
 					self.input->SetMouseButtonDown(MouseButton::Right, message == WM_RBUTTONDOWN);
 					break;
-				case WM_MBUTTONDOWN: case WM_MBUTTONUP:
+				case WM_MBUTTONDOWN:
+				case WM_MBUTTONUP:
 					self.input->SetMouseButtonDown(MouseButton::Middle, message == WM_MBUTTONDOWN);
 					break;
 				case WM_MOUSEWHEEL:
@@ -152,7 +157,8 @@ namespace BlackLight::Engine::Rendering::Detail
 					for (int button = 0; button < static_cast<int>(MouseButton::Count); ++button)
 						self.input->SetMouseButtonDown(static_cast<MouseButton>(button), false);
 					break;
-				default: break;
+				default:
+					break;
 				}
 			}
 			if (self.ui_context &&
@@ -176,9 +182,7 @@ namespace BlackLight::Engine::Rendering::Detail
 				ui_context->SetDimensions({static_cast<int>(width), static_cast<int>(height)});
 				ui_context->SetDensityIndependentPixelRatio(static_cast<float>(current_dpi) / USER_DEFAULT_SCREEN_DPI);
 				if (dpi != current_dpi)
-					BL_LOG(LogLevel::Info, "OpenGL", "UI surface: " + std::to_string(width) + "x" +
-						std::to_string(height) + " pixels, DPI " + std::to_string(current_dpi) +
-						", dp ratio " + std::to_string(ui_context->GetDensityIndependentPixelRatio()));
+					BL_LOG(LogLevel::Info, "OpenGL", "UI surface: " + std::to_string(width) + "x" + std::to_string(height) + " pixels, DPI " + std::to_string(current_dpi) + ", dp ratio " + std::to_string(ui_context->GetDensityIndependentPixelRatio()));
 			}
 			dpi = current_dpi;
 		}
@@ -231,8 +235,7 @@ namespace BlackLight::Engine::Rendering::Detail
 			window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
 			RegisterClassW(&window_class);
 			const std::wstring title = RmlWin32::ConvertToUTF16(config.surface.title);
-			const DWORD style = config.surface.resizable ? WS_OVERLAPPEDWINDOW :
-				(WS_OVERLAPPEDWINDOW & ~WS_SIZEBOX & ~WS_MAXIMIZEBOX);
+			const DWORD style = config.surface.resizable ? WS_OVERLAPPEDWINDOW : (WS_OVERLAPPEDWINDOW & ~WS_SIZEBOX & ~WS_MAXIMIZEBOX);
 			impl_->window = CreateWindowExW(
 				0, kWindowClass, title.c_str(), style,
 				CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
@@ -242,11 +245,11 @@ namespace BlackLight::Engine::Rendering::Detail
 			RECT bounds{0, 0, static_cast<LONG>(config.surface.width), static_cast<LONG>(config.surface.height)};
 			AdjustClientBounds(bounds, style, GetWindowDpi(impl_->window));
 			SetWindowPos(impl_->window, nullptr, 0, 0, bounds.right - bounds.left, bounds.bottom - bounds.top,
-				SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+						 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 		}
 
 		if (!SetWindowSubclass(impl_->window, Impl::WindowProcedure, reinterpret_cast<UINT_PTR>(impl_.get()),
-			reinterpret_cast<DWORD_PTR>(impl_.get())))
+							   reinterpret_cast<DWORD_PTR>(impl_.get())))
 			throw RenderingException(RenderingError::WindowCreationFailed, "OpenGL", "window input handler setup failed");
 		impl_->subclassed = true;
 
@@ -286,7 +289,7 @@ namespace BlackLight::Engine::Rendering::Detail
 			impl_->ui_runtime->system.SetWindow(impl_->window);
 			const std::string name = "blacklight-" + std::to_string(reinterpret_cast<std::uintptr_t>(impl_.get()));
 			impl_->ui_context = Rml::CreateContext(name,
-				{static_cast<int>(impl_->width), static_cast<int>(impl_->height)}, impl_->ui_renderer.get(), impl_->ui_input.get());
+												   {static_cast<int>(impl_->width), static_cast<int>(impl_->height)}, impl_->ui_renderer.get(), impl_->ui_input.get());
 			if (!impl_->ui_context)
 				throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL", "RmlUi context creation failed");
 		}
