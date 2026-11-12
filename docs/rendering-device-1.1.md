@@ -5,7 +5,8 @@
 This stage replaces the placeholder resource and submission path with real OpenGL
 3.3 and Direct3D 11 objects. Public headers keep native graphics API types private.
 The ABI now includes `DeviceCapabilities`, render-target `BeginFrame`, texture
-sampling fields, vertex semantics, pipeline state, and named uniform/texture commands.
+sampling fields, multisampled render targets and resolve, vertex semantics, pipeline
+state, and named uniform/texture commands.
 
 `CommandList` stores ordered commands in a tagged variant queue. It holds strong
 references to every resource it records, so moving or releasing the caller's handle
@@ -53,10 +54,32 @@ mip chain. Dimensions, mip count, format byte-size arithmetic, and backend limit
 validated before allocation. `RGBA8Srgb` maps to sRGB resource/view formats.
 
 Color render targets are created with `TextureDesc::render_target`. `D24S8` textures
-can be supplied as optional depth attachments. Color and depth dimensions must match,
-and both must belong to the same device. The currently bound render target cannot also
-be sampled by a command in that pass. Calling parameterless `BeginFrame()` returns to
-the default surface.
+can be supplied as optional depth attachments. Color and depth dimensions and sample
+counts must match, and both must belong to the same device. The currently bound render
+target cannot also be sampled by a command in that pass. Calling parameterless
+`BeginFrame()` returns to the default surface.
+
+## Multisampling
+
+`TextureDesc::sample_count` selects the render-target sample count. It must be a
+non-zero power of two no greater than `DeviceCapabilities::max_samples`; the default of
+1 creates a normal texture. Multisampled textures must be render targets with one mip
+level and no initial data, because samples are written by rendering rather than
+uploaded. `Texture::GetSampleCount()` reports the resolved value.
+
+`RenderingDevice::ResolveTexture(source, destination)` resolves a multisampled color
+target into a single-sample render target. Source and destination must share the
+format and dimensions, and the destination must have been created with
+`render_target = true`. Resolve is color-only: multisampled depth targets are valid
+during a pass but cannot be resolved through this API, because D3D11
+`ResolveSubresource` does not accept depth-stencil resources. OpenGL performs the
+resolve with `glBlitFramebuffer` and disables `GL_FRAMEBUFFER_SRGB` for the blit so
+both backends copy raw sample values. The resolve preserves the render targets that
+were bound before the call.
+
+A multisampled texture cannot be sampled directly. `GraphicsPipelineDesc::sample_count`
+must match the active color/depth target sample count, and submission rejects a
+pipeline/target mismatch or a `SetTexture` binding of an unresolved texture.
 
 ## Backend Support
 
@@ -67,11 +90,13 @@ the default surface.
 | Storage buffer | Opaque buffer allocation; GL 3.3 has no shader-storage binding | Raw SRV/UAV views on feature level 11_0+ |
 | Compute shaders | Not available in the required GL 3.3 context | Reported for feature level 11_0+ |
 | Render targets | One color texture FBO plus optional D24S8 attachment | One color RTV plus optional D24S8 DSV |
-| Multisampling | Capability limit reported; pipeline/target creation is single-sample | Capability limit reported; pipeline/target creation is single-sample |
+| Multisampling | Multisampled texture render targets and color resolve | Multisampled texture render targets and color resolve |
 | UI adapter | RmlUi GL2 adapter | Not implemented |
 
-`sample_count` must currently be 1. Full MSAA needs a multisampled texture description
-and a resolve operation, neither of which is part of this stage's command API.
+OpenGL resolves with a multisample texture attached to a framebuffer and
+`glBlitFramebuffer`; D3D11 creates `TEXTURE2DMS` views and resolves with
+`ResolveSubresource`. Both backends report the device sample-count ceiling through
+`DeviceCapabilities::max_samples`, and both reject sampling an unresolved target.
 OpenGL `BufferUsage::Storage` creates an opaque buffer object, but shader-visible
 storage-buffer binding is not advertised or exposed by the GL 3.3 backend.
 
@@ -80,9 +105,15 @@ storage-buffer binding is not advertised or exposed by the GL 3.3 backend.
 Verified with Visual Studio 2026 x64 Debug:
 
 ```powershell
-cmd /c 'call "D:\VisualStudio2026\Common7\Tools\VsDevCmd.bat" -arch=x64 && cmake --build build\x64\debug --target blacklight_engine_static -j 2'
-cmd /c 'call "D:\VisualStudio2026\Common7\Tools\VsDevCmd.bat" -arch=x64 && cmake --build build\x64\debug --target blacklight_engine -j 2'
+cmake --preset=x64-debug
+cmake --build build\x64\debug -j 4
+ctest --test-dir build\x64\debug --output-on-failure
 ```
 
-No GPU runtime smoke test was run in this change. `D3D11` links `d3dcompiler`; no
-GLEW/GLAD dependency or IDA database files are introduced.
+An ad-hoc MSAA smoke executable, removed after verification, created a 4x OpenGL
+multisampled color/depth target, rendered a solid quad, resolved it, sampled the
+resolved texture into the default framebuffer, and read back the expected green pixel.
+The same flow on Direct3D 11 created `TEXTURE2DMS` color/depth targets and completed
+`ResolveSubresource` without errors. Pipeline/target sample-count mismatch rejection
+was exercised on OpenGL. `D3D11` links `d3dcompiler`; no GLEW/GLAD dependency or IDA
+database files are introduced.

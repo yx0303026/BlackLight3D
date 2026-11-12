@@ -644,12 +644,17 @@ namespace BlackLight::Engine::Rendering::Detail
 				depth_target->impl_->device_id != impl_->device_id ||
 				depth_target->impl_->backend != RenderingBackend::OpenGL ||
 				depth_target->impl_->width != color_target->impl_->width ||
-				depth_target->impl_->height != color_target->impl_->height)
+				depth_target->impl_->height != color_target->impl_->height ||
+				depth_target->impl_->sample_count != color_target->impl_->sample_count)
 				throw RenderingException(RenderingError::SubmissionFailed, "OpenGL", "invalid depth render target");
 		}
+		const GLenum depth_texture_target =
+			depth_target && depth_target->impl_->sample_count > 1
+				? GL_TEXTURE_2D_MULTISAMPLE_VALUE
+				: GL_TEXTURE_2D_VALUE;
 		impl_->functions.BindFramebuffer(GL_FRAMEBUFFER_VALUE, framebuffer);
 		impl_->functions.FramebufferTexture2D(GL_FRAMEBUFFER_VALUE, GL_DEPTH_STENCIL_ATTACHMENT_VALUE,
-											 GL_TEXTURE_2D_VALUE,
+											 depth_texture_target,
 											 depth_target ? static_cast<GLuint>(depth_target->impl_->native) : 0, 0);
 		if (impl_->functions.CheckFramebufferStatus(GL_FRAMEBUFFER_VALUE) != GL_FRAMEBUFFER_COMPLETE_VALUE)
 			throw RenderingException(RenderingError::SubmissionFailed, "OpenGL", "render target framebuffer is incomplete");
@@ -856,6 +861,13 @@ namespace BlackLight::Engine::Rendering::Detail
 					{
 						pipeline = command.pipeline;
 						validate_owner(pipeline->device_id, pipeline->backend);
+						const std::uint32_t target_samples =
+							impl_->active_color_target
+								? impl_->active_color_target->sample_count
+								: (impl_->active_depth_target ? impl_->active_depth_target->sample_count : 1);
+						if (pipeline->sample_count != target_samples)
+							throw RenderingException(RenderingError::SubmissionFailed, "OpenGL",
+													 "pipeline sample count does not match the active render target");
 						functions.UseProgram(static_cast<GLuint>(pipeline->native));
 						functions.BindVertexArray(static_cast<GLuint>(pipeline->auxiliary));
 						if (pipeline->depth_test)
@@ -964,6 +976,9 @@ namespace BlackLight::Engine::Rendering::Detail
 						if (!pipeline)
 							throw RenderingException(RenderingError::SubmissionFailed, "OpenGL", "texture command requires a pipeline");
 						validate_owner(command.texture->device_id, command.texture->backend);
+						if (command.texture->sample_count != 1)
+							throw RenderingException(RenderingError::SubmissionFailed, "OpenGL",
+													 "multisampled textures must be resolved before sampling");
 						if (command.texture == impl_->active_color_target ||
 							command.texture == impl_->active_depth_target)
 							throw RenderingException(RenderingError::SubmissionFailed, "OpenGL",
@@ -1089,6 +1104,15 @@ namespace BlackLight::Engine::Rendering::Detail
 			++maximum_mip_levels;
 		if (description.mip_levels > maximum_mip_levels)
 			throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "texture mip count exceeds its dimensions");
+		if (!IsValidSampleCount(description.sample_count) ||
+			description.sample_count > impl_->capabilities.max_samples)
+			throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL",
+									 "texture sample count is not supported");
+		const bool multisampled = description.sample_count > 1;
+		if (multisampled && (description.mip_levels != 1 || description.initial_data ||
+							 description.initial_data_size || !description.render_target))
+			throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL",
+									 "multisampled textures require one mip level, no initial data, and render_target");
 		GLint maximum_size = 0;
 		glGetIntegerv(0x0D33, &maximum_size);
 		if (description.width > static_cast<std::uint32_t>(maximum_size) ||
@@ -1125,8 +1149,9 @@ namespace BlackLight::Engine::Rendering::Detail
 		GLuint sampler = 0;
 		GLuint framebuffer = 0;
 		impl_->functions.GenTextures(1, &texture);
-		impl_->functions.GenSamplers(1, &sampler);
-		if (!texture || !sampler)
+		if (!multisampled)
+			impl_->functions.GenSamplers(1, &sampler);
+		if (!texture || (!multisampled && !sampler))
 		{
 			if (texture)
 				impl_->functions.DeleteTextures(1, &texture);
@@ -1136,41 +1161,51 @@ namespace BlackLight::Engine::Rendering::Detail
 		}
 		try
 		{
-			impl_->functions.BindTexture(GL_TEXTURE_2D_VALUE, texture);
+			const GLenum texture_target = multisampled ? GL_TEXTURE_2D_MULTISAMPLE_VALUE : GL_TEXTURE_2D_VALUE;
+			impl_->functions.BindTexture(texture_target, texture);
 			impl_->functions.PixelStorei(GL_UNPACK_ALIGNMENT_VALUE, 1);
-			std::uint32_t mip_width = description.width;
-			std::uint32_t mip_height = description.height;
-			std::size_t data_offset = 0;
-			const auto *initial_bytes = static_cast<const std::uint8_t *>(description.initial_data);
-			for (std::uint32_t level = 0; level < description.mip_levels; ++level)
+			if (multisampled)
 			{
-				const void *level_data = initial_bytes ? initial_bytes + data_offset : nullptr;
-				impl_->functions.TexImage2D(GL_TEXTURE_2D_VALUE, static_cast<GLint>(level), internal_format,
-											static_cast<GLsizei>(mip_width), static_cast<GLsizei>(mip_height), 0,
-											external_format, data_type, level_data);
-				data_offset += static_cast<std::size_t>(mip_width) * mip_height * pixel_size;
-				mip_width = mip_width > 1 ? mip_width / 2 : 1;
-				mip_height = mip_height > 1 ? mip_height / 2 : 1;
+				impl_->functions.TexImage2DMultisample(
+					texture_target, static_cast<GLsizei>(description.sample_count), internal_format,
+					static_cast<GLsizei>(description.width), static_cast<GLsizei>(description.height), GL_TRUE);
 			}
-			const bool uses_mip_filter = description.mip_levels > 1;
-			const GLint minimum_filter = uses_mip_filter
-											 ? (description.minification_filter == TextureFilter::Nearest
-													? static_cast<GLint>(GL_NEAREST_MIPMAP_NEAREST_VALUE)
-													: static_cast<GLint>(GL_LINEAR_MIPMAP_LINEAR_VALUE))
-											 : MapFilter(description.minification_filter);
-			const GLint magnification_filter = MapFilter(description.magnification_filter);
-			impl_->functions.TexParameteri(GL_TEXTURE_2D_VALUE, GL_TEXTURE_MIN_FILTER_LOCAL, minimum_filter);
-			impl_->functions.TexParameteri(GL_TEXTURE_2D_VALUE, GL_TEXTURE_MAG_FILTER_LOCAL, magnification_filter);
-			impl_->functions.TexParameteri(GL_TEXTURE_2D_VALUE, GL_TEXTURE_WRAP_S_LOCAL,
-											MapAddressMode(description.address_u));
-			impl_->functions.TexParameteri(GL_TEXTURE_2D_VALUE, GL_TEXTURE_WRAP_T_LOCAL,
-											MapAddressMode(description.address_v));
-			impl_->functions.TexParameteri(GL_TEXTURE_2D_VALUE, GL_TEXTURE_MAX_LEVEL_VALUE,
-											static_cast<GLint>(description.mip_levels - 1));
-			impl_->functions.SamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER_LOCAL, minimum_filter);
-			impl_->functions.SamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER_LOCAL, magnification_filter);
-			impl_->functions.SamplerParameteri(sampler, GL_TEXTURE_WRAP_S_LOCAL, MapAddressMode(description.address_u));
-			impl_->functions.SamplerParameteri(sampler, GL_TEXTURE_WRAP_T_LOCAL, MapAddressMode(description.address_v));
+			else
+			{
+				std::uint32_t mip_width = description.width;
+				std::uint32_t mip_height = description.height;
+				std::size_t data_offset = 0;
+				const auto *initial_bytes = static_cast<const std::uint8_t *>(description.initial_data);
+				for (std::uint32_t level = 0; level < description.mip_levels; ++level)
+				{
+					const void *level_data = initial_bytes ? initial_bytes + data_offset : nullptr;
+					impl_->functions.TexImage2D(texture_target, static_cast<GLint>(level), internal_format,
+												static_cast<GLsizei>(mip_width), static_cast<GLsizei>(mip_height), 0,
+												external_format, data_type, level_data);
+					data_offset += static_cast<std::size_t>(mip_width) * mip_height * pixel_size;
+					mip_width = mip_width > 1 ? mip_width / 2 : 1;
+					mip_height = mip_height > 1 ? mip_height / 2 : 1;
+				}
+				const bool uses_mip_filter = description.mip_levels > 1;
+				const GLint minimum_filter = uses_mip_filter
+												 ? (description.minification_filter == TextureFilter::Nearest
+														? static_cast<GLint>(GL_NEAREST_MIPMAP_NEAREST_VALUE)
+														: static_cast<GLint>(GL_LINEAR_MIPMAP_LINEAR_VALUE))
+												 : MapFilter(description.minification_filter);
+				const GLint magnification_filter = MapFilter(description.magnification_filter);
+				impl_->functions.TexParameteri(texture_target, GL_TEXTURE_MIN_FILTER_LOCAL, minimum_filter);
+				impl_->functions.TexParameteri(texture_target, GL_TEXTURE_MAG_FILTER_LOCAL, magnification_filter);
+				impl_->functions.TexParameteri(texture_target, GL_TEXTURE_WRAP_S_LOCAL,
+												MapAddressMode(description.address_u));
+				impl_->functions.TexParameteri(texture_target, GL_TEXTURE_WRAP_T_LOCAL,
+												MapAddressMode(description.address_v));
+				impl_->functions.TexParameteri(texture_target, GL_TEXTURE_MAX_LEVEL_VALUE,
+												static_cast<GLint>(description.mip_levels - 1));
+				impl_->functions.SamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER_LOCAL, minimum_filter);
+				impl_->functions.SamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER_LOCAL, magnification_filter);
+				impl_->functions.SamplerParameteri(sampler, GL_TEXTURE_WRAP_S_LOCAL, MapAddressMode(description.address_u));
+				impl_->functions.SamplerParameteri(sampler, GL_TEXTURE_WRAP_T_LOCAL, MapAddressMode(description.address_v));
+			}
 			if (description.render_target && description.format != ResourceFormat::D24S8)
 			{
 				impl_->functions.GenFramebuffers(1, &framebuffer);
@@ -1178,7 +1213,7 @@ namespace BlackLight::Engine::Rendering::Detail
 					throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "framebuffer allocation failed");
 				impl_->functions.BindFramebuffer(GL_FRAMEBUFFER_VALUE, framebuffer);
 				impl_->functions.FramebufferTexture2D(GL_FRAMEBUFFER_VALUE, GL_COLOR_ATTACHMENT0_VALUE,
-													 GL_TEXTURE_2D_VALUE, texture, 0);
+													 texture_target, texture, 0);
 				if (impl_->functions.CheckFramebufferStatus(GL_FRAMEBUFFER_VALUE) != GL_FRAMEBUFFER_COMPLETE_VALUE)
 					throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "color texture framebuffer is incomplete");
 				impl_->functions.BindFramebuffer(GL_FRAMEBUFFER_VALUE, 0);
@@ -1191,6 +1226,7 @@ namespace BlackLight::Engine::Rendering::Detail
 			resource->mip_levels = description.mip_levels;
 			resource->format = description.format;
 			resource->render_target = description.render_target;
+			resource->sample_count = description.sample_count;
 			resource->device_id = impl_->device_id;
 			resource->backend = RenderingBackend::OpenGL;
 			resource->lifetime = impl_->lifetime;
@@ -1222,6 +1258,51 @@ namespace BlackLight::Engine::Rendering::Detail
 		}
 	}
 
+	/// Resolves a multisampled color target into a single-sample render target.
+	void OpenGLDevice::ResolveTexture(const Texture &source, const Texture &destination)
+	{
+		if (!impl_->functions_loaded || !impl_->context || !wglMakeCurrent(impl_->dc, impl_->context))
+			throw RenderingException(RenderingError::SubmissionFailed, "OpenGL", "OpenGL context is not current");
+		const auto *source_impl = source.impl_.get();
+		const auto *destination_impl = destination.impl_.get();
+		if (!source_impl || !destination_impl)
+			throw RenderingException(RenderingError::SubmissionFailed, "OpenGL", "resolve texture is empty");
+		if (source_impl->device_id != impl_->device_id || source_impl->backend != RenderingBackend::OpenGL ||
+			destination_impl->device_id != impl_->device_id || destination_impl->backend != RenderingBackend::OpenGL)
+			throw RenderingException(RenderingError::SubmissionFailed, "OpenGL",
+									 "resolve textures must belong to this device");
+		if (source_impl->format == ResourceFormat::D24S8)
+			throw RenderingException(RenderingError::UnsupportedOperation, "OpenGL",
+									 "depth targets cannot be resolved");
+		if (source_impl->sample_count <= 1 || !source_impl->render_target || !source_impl->tertiary)
+			throw RenderingException(RenderingError::SubmissionFailed, "OpenGL",
+									 "resolve source must be a multisampled render target");
+		if (destination_impl->sample_count != 1 || !destination_impl->render_target || !destination_impl->tertiary)
+			throw RenderingException(RenderingError::SubmissionFailed, "OpenGL",
+									 "resolve destination must be a single-sample render target");
+		if (source_impl->format != destination_impl->format ||
+			source_impl->width != destination_impl->width ||
+			source_impl->height != destination_impl->height)
+			throw RenderingException(RenderingError::SubmissionFailed, "OpenGL",
+									 "resolve textures must share a format and dimensions");
+
+		const GLuint read_framebuffer = static_cast<GLuint>(source_impl->tertiary);
+		const GLuint draw_framebuffer = static_cast<GLuint>(destination_impl->tertiary);
+		impl_->functions.BindFramebuffer(GL_READ_FRAMEBUFFER_VALUE, read_framebuffer);
+		impl_->functions.BindFramebuffer(GL_DRAW_FRAMEBUFFER_VALUE, draw_framebuffer);
+		// Resolve raw samples without applying a second sRGB conversion.
+		const GLboolean srgb_enabled = glIsEnabled(GL_FRAMEBUFFER_SRGB_VALUE_LOCAL);
+		if (srgb_enabled)
+			glDisable(GL_FRAMEBUFFER_SRGB_VALUE_LOCAL);
+		impl_->functions.BlitFramebuffer(
+			0, 0, static_cast<GLint>(source_impl->width), static_cast<GLint>(source_impl->height),
+			0, 0, static_cast<GLint>(destination_impl->width), static_cast<GLint>(destination_impl->height),
+			GL_COLOR_BUFFER_BIT_VALUE, GL_NEAREST_FILTER_VALUE);
+		if (srgb_enabled)
+			glEnable(GL_FRAMEBUFFER_SRGB_VALUE_LOCAL);
+		impl_->functions.BindFramebuffer(GL_FRAMEBUFFER_VALUE, impl_->current_framebuffer);
+	}
+
 	/// Compiles a backend GLSL program and creates its input vertex array.
 	GraphicsPipeline OpenGLDevice::CreateGraphicsPipeline(const GraphicsPipelineDesc &description)
 	{
@@ -1231,8 +1312,10 @@ namespace BlackLight::Engine::Rendering::Detail
 			throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "vertex attributes pointer is null");
 		if (!description.vertex_stride && description.vertex_attribute_count)
 			throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "vertex stride must be non-zero");
-		if (description.sample_count != 1)
-			throw RenderingException(RenderingError::UnsupportedOperation, "OpenGL", "multisampled pipelines are not implemented");
+		if (!IsValidSampleCount(description.sample_count) ||
+			description.sample_count > impl_->capabilities.max_samples)
+			throw RenderingException(RenderingError::UnsupportedOperation, "OpenGL",
+									 "pipeline sample count is not supported");
 
 		const char *vertex_source = nullptr;
 		const char *fragment_source = nullptr;

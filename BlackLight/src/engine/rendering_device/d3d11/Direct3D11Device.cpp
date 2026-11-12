@@ -660,9 +660,10 @@ namespace BlackLight::Engine::Rendering::Detail
 				throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
 										 "depth texture has no depth-stencil view");
 		}
-		if (color && depth && (color->width != depth->width || color->height != depth->height))
+		if (color && depth && (color->width != depth->width || color->height != depth->height ||
+							   color->sample_count != depth->sample_count))
 			throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
-									 "color and depth target dimensions do not match");
+									 "color and depth target dimensions or sample counts do not match");
 
 		ID3D11RenderTargetView *render_target_view =
 			color ? reinterpret_cast<ID3D11RenderTargetView *>(color->tertiary) : nullptr;
@@ -905,6 +906,13 @@ namespace BlackLight::Engine::Rendering::Detail
 					{
 						pipeline = command.pipeline;
 						validate_owner(pipeline->device_id, pipeline->backend);
+						const std::uint32_t target_samples =
+							impl_->active_color_target
+								? impl_->active_color_target->sample_count
+								: (impl_->active_depth_target ? impl_->active_depth_target->sample_count : 1);
+						if (pipeline->sample_count != target_samples)
+							throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
+													 "pipeline sample count does not match the active render target");
 						bind_pipeline();
 					}
 					else if constexpr (std::is_same_v<T, CommandList::Impl::VertexBufferCommand>)
@@ -962,6 +970,9 @@ namespace BlackLight::Engine::Rendering::Detail
 							throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
 													 "texture command requires a pipeline");
 						validate_owner(command.texture->device_id, command.texture->backend);
+						if (command.texture->sample_count != 1)
+							throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
+													 "multisampled textures must be resolved before sampling");
 						if (command.texture == impl_->active_color_target ||
 							command.texture == impl_->active_depth_target)
 							throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
@@ -1155,12 +1166,30 @@ namespace BlackLight::Engine::Rendering::Detail
 		if (description.mip_levels > maximum_mip_levels)
 			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
 									 "texture mip count exceeds its dimensions");
+		if (!IsValidSampleCount(description.sample_count) ||
+			description.sample_count > impl_->capabilities.max_samples)
+			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
+									 "texture sample count is not supported");
+		const bool multisampled = description.sample_count > 1;
+		if (multisampled && (description.mip_levels != 1 || description.initial_data ||
+							 description.initial_data_size || !description.render_target))
+			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
+									 "multisampled textures require one mip level, no initial data, and render_target");
 
 		DXGI_FORMAT format{};
 		std::uint32_t pixel_size = 0;
 		if (!MapFormat(description.format, format, pixel_size))
 			throw RenderingException(RenderingError::UnsupportedOperation, "Direct3D11",
 									 "texture format is not supported");
+		if (multisampled)
+		{
+			UINT quality_levels = 0;
+			if (FAILED(impl_->device->CheckMultisampleQualityLevels(
+					format, description.sample_count, &quality_levels)) ||
+				!quality_levels)
+				throw RenderingException(RenderingError::UnsupportedOperation, "Direct3D11",
+										 "texture format does not support the requested sample count");
+		}
 		std::vector<D3D11_SUBRESOURCE_DATA> initial_subresources;
 		std::size_t required_data_size = 0;
 		std::uint32_t mip_width = description.width;
@@ -1207,12 +1236,16 @@ namespace BlackLight::Engine::Rendering::Detail
 		native_desc.MipLevels = description.mip_levels;
 		native_desc.ArraySize = 1;
 		native_desc.Format = format;
-		native_desc.SampleDesc.Count = 1;
+		native_desc.SampleDesc.Count = description.sample_count;
+		native_desc.SampleDesc.Quality = 0;
 		native_desc.Usage = D3D11_USAGE_DEFAULT;
-		native_desc.BindFlags = depth_format
-									? D3D11_BIND_DEPTH_STENCIL
-									: D3D11_BIND_SHADER_RESOURCE |
-										  (description.render_target ? D3D11_BIND_RENDER_TARGET : 0);
+		if (depth_format)
+			native_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+		else if (multisampled)
+			native_desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+		else
+			native_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE |
+									(description.render_target ? D3D11_BIND_RENDER_TARGET : 0);
 		ComPtr<ID3D11Texture2D> texture;
 		if (FAILED(impl_->device->CreateTexture2D(
 				&native_desc,
@@ -1227,36 +1260,46 @@ namespace BlackLight::Engine::Rendering::Detail
 		ComPtr<ID3D11DepthStencilView> depth_view;
 		if (!depth_format)
 		{
-			D3D11_SHADER_RESOURCE_VIEW_DESC view_desc{};
-			view_desc.Format = format;
-			view_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-			view_desc.Texture2D.MipLevels = description.mip_levels;
-			if (FAILED(impl_->device->CreateShaderResourceView(
-					texture.Get(), &view_desc, shader_view.GetAddressOf())))
-				throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-										 "texture shader-resource view creation failed");
+			if (!multisampled)
+			{
+				D3D11_SHADER_RESOURCE_VIEW_DESC view_desc{};
+				view_desc.Format = format;
+				view_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+				view_desc.Texture2D.MipLevels = description.mip_levels;
+				if (FAILED(impl_->device->CreateShaderResourceView(
+						texture.Get(), &view_desc, shader_view.GetAddressOf())))
+					throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
+											 "texture shader-resource view creation failed");
 
-			D3D11_SAMPLER_DESC sampler_desc{};
-			sampler_desc.Filter = MapSamplerFilter(
-				description.minification_filter, description.magnification_filter,
-				description.mip_levels > 1);
-			sampler_desc.AddressU = MapAddressMode(description.address_u);
-			sampler_desc.AddressV = MapAddressMode(description.address_v);
-			sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-			sampler_desc.MaxAnisotropy = 1;
-			sampler_desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
-			sampler_desc.MinLOD = 0.0f;
-			sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
-			if (FAILED(impl_->device->CreateSamplerState(
-					&sampler_desc, sampler.GetAddressOf())))
-				throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-										 "texture sampler creation failed");
+				D3D11_SAMPLER_DESC sampler_desc{};
+				sampler_desc.Filter = MapSamplerFilter(
+					description.minification_filter, description.magnification_filter,
+					description.mip_levels > 1);
+				sampler_desc.AddressU = MapAddressMode(description.address_u);
+				sampler_desc.AddressV = MapAddressMode(description.address_v);
+				sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+				sampler_desc.MaxAnisotropy = 1;
+				sampler_desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+				sampler_desc.MinLOD = 0.0f;
+				sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
+				if (FAILED(impl_->device->CreateSamplerState(
+						&sampler_desc, sampler.GetAddressOf())))
+					throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
+											 "texture sampler creation failed");
+			}
 			if (description.render_target)
 			{
 				D3D11_RENDER_TARGET_VIEW_DESC target_desc{};
 				target_desc.Format = format;
-				target_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-				target_desc.Texture2D.MipSlice = 0;
+				if (multisampled)
+				{
+					target_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMS;
+				}
+				else
+				{
+					target_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+					target_desc.Texture2D.MipSlice = 0;
+				}
 				if (FAILED(impl_->device->CreateRenderTargetView(
 						texture.Get(), &target_desc, render_target_view.GetAddressOf())))
 					throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
@@ -1267,8 +1310,15 @@ namespace BlackLight::Engine::Rendering::Detail
 		{
 			D3D11_DEPTH_STENCIL_VIEW_DESC view_desc{};
 			view_desc.Format = format;
-			view_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-			view_desc.Texture2D.MipSlice = 0;
+			if (multisampled)
+			{
+				view_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
+			}
+			else
+			{
+				view_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+				view_desc.Texture2D.MipSlice = 0;
+			}
 			if (FAILED(impl_->device->CreateDepthStencilView(
 					texture.Get(), &view_desc, depth_view.GetAddressOf())))
 				throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
@@ -1281,6 +1331,7 @@ namespace BlackLight::Engine::Rendering::Detail
 		resource->mip_levels = description.mip_levels;
 		resource->format = description.format;
 		resource->render_target = description.render_target || depth_format;
+		resource->sample_count = description.sample_count;
 		resource->device_id = impl_->device_id;
 		resource->backend = RenderingBackend::Direct3D11;
 		resource->lifetime = impl_->lifetime;
@@ -1288,6 +1339,7 @@ namespace BlackLight::Engine::Rendering::Detail
 		resource->auxiliary = reinterpret_cast<std::uintptr_t>(sampler.Get());
 		resource->tertiary = reinterpret_cast<std::uintptr_t>(render_target_view.Get());
 		resource->quaternary = reinterpret_cast<std::uintptr_t>(depth_view.Get());
+		resource->resource = reinterpret_cast<std::uintptr_t>(texture.Get());
 		resource->deletion = impl_->lifetime->Register(
 			[texture, shader_view, sampler, render_target_view, depth_view]() mutable
 			{
@@ -1302,6 +1354,71 @@ namespace BlackLight::Engine::Rendering::Detail
 		return result;
 	}
 
+	/// Resolves a multisampled color target into a single-sample render target.
+	void Direct3D11Device::ResolveTexture(const Texture &source, const Texture &destination)
+	{
+		if (!impl_->device || !impl_->context)
+			throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
+									 "device is not initialized");
+		const auto *source_impl = source.impl_.get();
+		const auto *destination_impl = destination.impl_.get();
+		if (!source_impl || !destination_impl)
+			throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
+									 "resolve texture is empty");
+		if (source_impl->device_id != impl_->device_id ||
+			source_impl->backend != RenderingBackend::Direct3D11 ||
+			destination_impl->device_id != impl_->device_id ||
+			destination_impl->backend != RenderingBackend::Direct3D11)
+			throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
+									 "resolve textures must belong to this device");
+		if (source_impl->sample_count <= 1 || !source_impl->render_target || !source_impl->resource)
+			throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
+									 "resolve source must be a multisampled render target");
+		if (destination_impl->sample_count != 1 || !destination_impl->render_target ||
+			!destination_impl->resource)
+			throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
+									 "resolve destination must be a single-sample render target");
+		if (source_impl->format != destination_impl->format ||
+			source_impl->width != destination_impl->width ||
+			source_impl->height != destination_impl->height)
+			throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
+									 "resolve textures must share a format and dimensions");
+		if (source_impl->format == ResourceFormat::D24S8)
+			throw RenderingException(RenderingError::UnsupportedOperation, "Direct3D11",
+									 "depth-stencil targets cannot be resolved");
+		DXGI_FORMAT format{};
+		std::uint32_t pixel_size = 0;
+		if (!MapFormat(source_impl->format, format, pixel_size) || !pixel_size)
+			throw RenderingException(RenderingError::UnsupportedOperation, "Direct3D11",
+									 "texture format is not supported");
+
+		auto *context = impl_->context.Get();
+		// ResolveSubresource requires that neither resource is bound for writing.
+		context->OMSetRenderTargets(0, nullptr, nullptr);
+		context->ResolveSubresource(
+			reinterpret_cast<ID3D11Texture2D *>(destination_impl->resource), 0,
+			reinterpret_cast<ID3D11Texture2D *>(source_impl->resource), 0, format);
+		// Restore the render targets that were bound before the resolve.
+		if (!impl_->active_color_target && !impl_->active_depth_target)
+		{
+			ID3D11RenderTargetView *render_target = impl_->render_target.Get();
+			context->OMSetRenderTargets(1, &render_target, impl_->depth_view.Get());
+		}
+		else
+		{
+			ID3D11RenderTargetView *render_target =
+				impl_->active_color_target
+					? reinterpret_cast<ID3D11RenderTargetView *>(impl_->active_color_target->tertiary)
+					: nullptr;
+			ID3D11DepthStencilView *depth_view =
+				impl_->active_depth_target
+					? reinterpret_cast<ID3D11DepthStencilView *>(impl_->active_depth_target->quaternary)
+					: nullptr;
+			context->OMSetRenderTargets(render_target ? 1u : 0u,
+										render_target ? &render_target : nullptr, depth_view);
+		}
+	}
+
 	/// Compiles HLSL stages and creates D3D11 input layout and fixed-function states.
 	GraphicsPipeline Direct3D11Device::CreateGraphicsPipeline(
 		const GraphicsPipelineDesc &description)
@@ -1313,9 +1430,10 @@ namespace BlackLight::Engine::Rendering::Detail
 			(description.vertex_attribute_count && !description.vertex_stride))
 			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
 									 "vertex attributes require a pointer and non-zero stride");
-		if (description.sample_count != 1)
+		if (!IsValidSampleCount(description.sample_count) ||
+			description.sample_count > impl_->capabilities.max_samples)
 			throw RenderingException(RenderingError::UnsupportedOperation, "Direct3D11",
-									 "multisampled render targets are not available in the normalized texture API");
+									 "pipeline sample count is not supported");
 		if (MapTopology(description.topology) == D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED)
 			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
 									 "primitive topology is invalid");
@@ -1404,7 +1522,7 @@ namespace BlackLight::Engine::Rendering::Detail
 										 : D3D11_CULL_BACK;
 		raster_desc.FrontCounterClockwise = FALSE;
 		raster_desc.DepthClipEnable = TRUE;
-		raster_desc.MultisampleEnable = FALSE;
+		raster_desc.MultisampleEnable = description.sample_count > 1 ? TRUE : FALSE;
 		ComPtr<ID3D11RasterizerState> raster_state;
 		if (FAILED(impl_->device->CreateRasterizerState(&raster_desc, raster_state.GetAddressOf())))
 			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",

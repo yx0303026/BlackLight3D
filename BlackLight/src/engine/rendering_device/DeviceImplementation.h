@@ -61,6 +61,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		Buffer CreateBuffer(const BufferDesc &description) override;
 		/// Creates a device texture.
 		Texture CreateTexture(const TextureDesc &description) override;
+		/// Resolves a multisampled color target into a single-sample texture.
+		void ResolveTexture(const Texture &source, const Texture &destination) override;
 		/// Creates a graphics pipeline.
 		GraphicsPipeline CreateGraphicsPipeline(const GraphicsPipelineDesc &description) override;
 
@@ -113,6 +115,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		Buffer CreateBuffer(const BufferDesc &description) override;
 		/// Creates a device texture.
 		Texture CreateTexture(const TextureDesc &description) override;
+		/// Resolves a multisampled color target into a single-sample texture.
+		void ResolveTexture(const Texture &source, const Texture &destination) override;
 		/// Creates a graphics pipeline.
 		GraphicsPipeline CreateGraphicsPipeline(const GraphicsPipelineDesc &description) override;
 

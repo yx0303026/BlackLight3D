@@ -17,6 +17,11 @@ namespace BlackLight::Engine::Rendering::Detail
 	inline constexpr GLenum GL_DYNAMIC_DRAW_VALUE = 0x88E8;
 	inline constexpr GLenum GL_TEXTURE0_VALUE = 0x84C0;
 	inline constexpr GLenum GL_TEXTURE_2D_VALUE = 0x0DE1;
+	inline constexpr GLenum GL_TEXTURE_2D_MULTISAMPLE_VALUE = 0x9100;
+	inline constexpr GLenum GL_READ_FRAMEBUFFER_VALUE = 0x8CA8;
+	inline constexpr GLenum GL_DRAW_FRAMEBUFFER_VALUE = 0x8CA9;
+	inline constexpr GLenum GL_COLOR_BUFFER_BIT_VALUE = 0x00004000;
+	inline constexpr GLenum GL_NEAREST_FILTER_VALUE = 0x2600;
 	inline constexpr GLenum GL_TEXTURE_MIN_FILTER_VALUE = 0x2801;
 	inline constexpr GLenum GL_TEXTURE_MAG_FILTER_VALUE = 0x2800;
 	inline constexpr GLenum GL_TEXTURE_WRAP_S_VALUE = 0x2802;
@@ -80,6 +85,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		using BindTextureProc = void(APIENTRY *)(GLenum, GLuint);
 		using TexParameteriProc = void(APIENTRY *)(GLenum, GLenum, GLint);
 		using TexImage2DProc = void(APIENTRY *)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *);
+		using TexImage2DMultisampleProc = void(APIENTRY *)(GLenum, GLsizei, GLenum, GLsizei, GLsizei, GLboolean);
+		using BlitFramebufferProc = void(APIENTRY *)(GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum);
 		using PixelStoreiProc = void(APIENTRY *)(GLenum, GLint);
 		using GenerateMipmapProc = void(APIENTRY *)(GLenum);
 		using GenVertexArraysProc = void(APIENTRY *)(GLsizei, GLuint *);
@@ -135,6 +142,8 @@ namespace BlackLight::Engine::Rendering::Detail
 	X(BindTexture, glBindTexture) \
 	X(TexParameteri, glTexParameteri) \
 	X(TexImage2D, glTexImage2D) \
+	X(TexImage2DMultisample, glTexImage2DMultisample) \
+	X(BlitFramebuffer, glBlitFramebuffer) \
 	X(PixelStorei, glPixelStorei) \
 	X(GenerateMipmap, glGenerateMipmap) \
 	X(GenVertexArrays, glGenVertexArrays) \

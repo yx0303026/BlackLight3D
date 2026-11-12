@@ -32,6 +32,8 @@ namespace BlackLight::Engine::Rendering
 	std::uint32_t Texture::GetWidth() const noexcept { return impl_ ? impl_->width : 0; }
 	/// Returns the texture height.
 	std::uint32_t Texture::GetHeight() const noexcept { return impl_ ? impl_->height : 0; }
+	/// Returns the texture sample count.
+	std::uint32_t Texture::GetSampleCount() const noexcept { return impl_ ? impl_->sample_count : 0; }
 
 	/// Creates an empty pipeline.
 	GraphicsPipeline::GraphicsPipeline() = default;

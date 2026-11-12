@@ -53,7 +53,7 @@ BlackLight 当前是“渲染设备宿主 + 少量运行时服务”的骨架：
 - [x] **OpenGL 提交执行**：绑定 VAO/管线/纹理、设置 viewport、执行 indexed/non-indexed draw — ★★☆（2–3d）
 - [x] **D3D11 提交执行**：Buffer、Texture/SRV、InputLayout、RSSetViewports、Draw/DrawIndexed — ★★☆（3–5d）
 - [x] **常量与 uniform 绑定 API**：`CommandList::SetUniform` / `SetTexture`，支持 float、vec2/3/4、mat4、命名纹理槽 — ★★☆（2–3d）
-- [ ] **统一管线状态**：深度测试/写入、剔除、混合、sRGB 已接入；MSAA 需要纹理采样数与 resolve API，目前管线只接受单采样 — ★★☆（2–3d）
+- [x] **统一管线状态**：深度测试/写入、剔除、混合、sRGB、MSAA 纹理采样数与颜色 resolve 已接入；深度目标可渲染但不可 resolve — ★★☆（2–3d）
 - [x] **着色器编译**：GLSL 运行时编译；D3D11 使用 `D3DCompile`；编译与链接诊断写日志 — ★★☆（2–3d）
 - [x] **纹理格式映射**：已映射 `ResourceFormat` 到 GL internal format / DXGI format，支持 sRGB 和完整紧密排列 mip 链 — ★☆☆（1–2d）
 - [x] **Render Target / 离屏渲染**：颜色纹理可创建 framebuffer/RTV，D24S8 可作深度附件，`BeginFrame` 可切换目标 — ★★★（1 周）

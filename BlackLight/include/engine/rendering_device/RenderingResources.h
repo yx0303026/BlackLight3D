@@ -90,6 +90,10 @@ namespace BlackLight::Engine::Rendering
 		TextureAddressMode address_u = TextureAddressMode::Clamp;
 		TextureAddressMode address_v = TextureAddressMode::Clamp;
 		bool render_target = false;
+		/// Number of samples used by a render target. 1 creates a normal texture;
+		/// a power-of-two value above 1 creates a multisampled render target that
+		/// must be resolved before it can be sampled.
+		std::uint32_t sample_count = 1;
 	};
 
 	/// Owns one backend buffer and releases it through its device implementation.
@@ -144,6 +148,8 @@ namespace BlackLight::Engine::Rendering
 		std::uint32_t GetWidth() const noexcept;
 		/// Returns the texture height.
 		std::uint32_t GetHeight() const noexcept;
+		/// Returns the number of samples, or 1 for a single-sample texture.
+		std::uint32_t GetSampleCount() const noexcept;
 
 	private:
 		class Impl;
@@ -187,7 +193,8 @@ namespace BlackLight::Engine::Rendering
 			LineList,
 			PointList
 		} topology = PrimitiveTopology::TriangleList;
-		/// Must be 1 until multisampled texture and resolve support is added.
+		/// Sample count of the render targets this pipeline draws into. Must match
+		/// the active color/depth target; 1 for single-sample targets.
 		std::uint32_t sample_count = 1;
 		bool srgb = false;
 	};

@@ -153,6 +153,9 @@ namespace BlackLight::Engine
 			virtual Buffer CreateBuffer(const BufferDesc &description) = 0;
 			/// Creates a backend texture using the normalized description.
 			virtual Texture CreateTexture(const TextureDesc &description) = 0;
+			/// Resolves a multisampled color render target into a single-sample
+			/// render target with matching format and dimensions.
+			virtual void ResolveTexture(const Texture &source, const Texture &destination) = 0;
 			/// Creates a backend graphics pipeline.
 			virtual GraphicsPipeline CreateGraphicsPipeline(const GraphicsPipelineDesc &description) = 0;
 

@@ -24,9 +24,11 @@ recorded queue; a failed submission preserves it for inspection or retry. The wr
 do not expose WGL, D3D11, or DXGI types in the public ABI.
 
 Both backends create buffers, textures, samplers, and graphics pipelines and execute
-draw command lists. The OpenGL backend uses an in-tree OpenGL 3.3 entry-point loader;
-the D3D11 backend compiles HLSL with `D3DCompile`. Resources carry device identity,
-and submission rejects resources created by another device. Resources held past device
+draw command lists. Multisampled render targets are created with
+`TextureDesc::sample_count` and resolved into a single-sample render target with
+`RenderingDevice::ResolveTexture`. The OpenGL backend uses an in-tree OpenGL 3.3
+entry-point loader; the D3D11 backend compiles HLSL with `D3DCompile`. Resources
+carry device identity, and submission rejects resources created by another device. Resources held past device
 shutdown have their backend objects released during shutdown while the native context
 or D3D device is still valid.
 

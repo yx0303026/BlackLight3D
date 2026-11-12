@@ -157,6 +157,12 @@ namespace BlackLight::Engine::Rendering::Detail
 		std::vector<std::shared_ptr<DeviceDeletion>> live_;
 	};
 
+	/// Reports whether a sample count is a non-zero power of two.
+	inline bool IsValidSampleCount(std::uint32_t sample_count) noexcept
+	{
+		return sample_count != 0 && (sample_count & (sample_count - 1)) == 0;
+	}
+
 	/// Maps a reflected uniform to a D3D11 constant-buffer byte range.
 	struct UniformBinding
 	{
@@ -213,14 +219,18 @@ namespace BlackLight::Engine::Rendering::Detail
 		std::uint32_t mip_levels = 1;
 		ResourceFormat format = ResourceFormat::RGBA8Unorm;
 		bool render_target = false;
+		std::uint32_t sample_count = 1;
 		std::uint64_t device_id = 0;
 		RenderingBackend backend{};
 		std::weak_ptr<DeviceLifetime> lifetime;
 		std::shared_ptr<DeviceDeletion> deletion;
+		/// Holds the shader-resource view (D3D11) or texture object (OpenGL).
 		std::uintptr_t native = 0;
 		std::uintptr_t auxiliary = 0;
 		std::uintptr_t tertiary = 0;
 		std::uintptr_t quaternary = 0;
+		/// Holds the underlying D3D11 texture used by ResolveSubresource.
+		std::uintptr_t resource = 0;
 
 		/// Defers or performs backend destruction exactly once.
 		~TexturePayload()
