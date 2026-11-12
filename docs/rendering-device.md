@@ -42,13 +42,32 @@ RmlUi is optional. `RenderingDevice::GetUiContext()` returns a context only when
 device has a UI adapter installed. The core device interface itself remains usable
 without RmlUi.
 
-The OpenGL device installs the official RmlUi 6.3 GL2 renderer and Win32 platform
-adapter when `DeviceConfig::enable_ui` is true. It forwards native input, updates
-context dimensions on resize, and calls `Context::Update()` and `Context::Render()`
-from `RenderUi()`. UI documents must be closed before device shutdown. Render
-managers and the core are released while the WGL context is still current.
-Platform and renderer implementations remain private to the engine sources.
-The Direct3D 11 device currently has no UI adapter and returns a null UI context.
+Both devices install the official RmlUi 6.3 Win32 platform adapter and their
+matching GL2 or DX11 renderer when `DeviceConfig::enable_ui` is true. They forward
+native input, synchronize context dimensions and DPI after resize, and update and
+render the overlay from `RenderUi()`. The DX11 adapter uses the swap-chain target
+and restores application D3D11 bindings after rendering. The upstream DX11 adapter
+supports uncompressed TGA files for `LoadTexture`; generated textures, including
+font atlases, use the normal RmlUi path.
+
+UI documents must be closed before device shutdown. Contexts, render managers,
+and native UI resources are released while their renderer still exists; OpenGL
+resources are also released while the WGL context is current. Platform and
+renderer implementations remain private to engine sources.
+
+`Window` classifies lost devices separately from ordinary rendering failures. Its
+default loop invokes `OnDeviceLost()`, asks the device to recover on the existing
+window, then invokes `OnDeviceRestored()`. These hooks let applications drop and
+recreate their own GPU resources. Recovery invalidates all old `Buffer`, `Texture`,
+and `GraphicsPipeline` handles; those handles report false and cannot be submitted
+to the replacement device. Direct `RenderingDevice` users can call `Recover()`
+themselves after `DeviceLost`.
+
+The D3D11 backend recreates its device, swap chain, surface views, and DX11 UI
+renderer after device removal or reset. The OpenGL backend requests robust WGL
+context creation when available and checks for reset status during rendering. It
+recreates the context and regenerates UI font and texture resources while retaining
+the RmlUi context and documents.
 
 See [Demo RmlUi integration investigation](demo-rmlui-fix.md) for the startup
 failure, the upstream sources checked, and verification details.

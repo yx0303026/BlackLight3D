@@ -39,6 +39,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		void Present() override;
 		/// Releases all resources without throwing.
 		void Shutdown() noexcept override;
+		/// Recreates the WGL context and UI resources on the existing window.
+		void Recover() override;
 		/// Returns drawable dimensions and close state.
 		SurfaceState GetSurfaceState() const noexcept override;
 		/// Connects the input snapshot.
@@ -93,6 +95,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		void Present() override;
 		/// Releases all resources without throwing.
 		void Shutdown() noexcept override;
+		/// Recreates the D3D11 device, swap chain, and UI renderer on the existing window.
+		void Recover() override;
 		/// Returns drawable dimensions and close state.
 		SurfaceState GetSurfaceState() const noexcept override;
 		/// Connects the input snapshot.
@@ -103,9 +107,9 @@ namespace BlackLight::Engine::Rendering::Detail
 		DeviceCapabilities GetCapabilities() const noexcept override;
 		/// Returns the Win32 window handle.
 		NativeWindowHandle GetNativeWindow() const noexcept override;
-		/// Returns no UI service until a D3D11 UI renderer is initialized.
+		/// Returns the optional RmlUi context.
 		Rml::Context *GetUiContext() const noexcept override;
-		/// Returns no UI service until a D3D11 UI renderer is initialized.
+		/// Returns the optional RmlUi system interface.
 		Rml::SystemInterface *GetUiSystemInterface() const noexcept override;
 		/// Creates an empty command list.
 		CommandList CreateCommandList() override;

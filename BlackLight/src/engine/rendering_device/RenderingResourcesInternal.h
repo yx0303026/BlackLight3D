@@ -136,8 +136,8 @@ namespace BlackLight::Engine::Rendering::Detail
 						live_.end());
 		}
 
-		/// Destroys all registered resources before disabling the native device.
-		void Shutdown() noexcept
+		/// Invalidates all resources, optionally abandoning calls into a lost GL context.
+		void Shutdown(bool execute_callbacks = true) noexcept
 		{
 			std::vector<std::shared_ptr<DeviceDeletion>> callbacks;
 			{
@@ -147,7 +147,12 @@ namespace BlackLight::Engine::Rendering::Detail
 			}
 			for (const auto &callback : callbacks)
 				if (callback)
-					callback->Destroy();
+				{
+					if (execute_callbacks)
+						callback->Destroy();
+					else
+						callback->Abandon();
+				}
 		}
 
 	private:

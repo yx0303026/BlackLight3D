@@ -73,8 +73,10 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/BlackLightEmbedBinary.cmake")
 
 # Use the official adapters matching the pinned core, including for installed packages.
 set(BLACKLIGHT_RMLUI_BACKENDS_DIRECTORY "${rmlui_SOURCE_DIR}/Backends" CACHE PATH
-	"Directory containing the RmlUi 6.3 Win32 and GL2 adapters")
-if(NOT EXISTS "${BLACKLIGHT_RMLUI_BACKENDS_DIRECTORY}/RmlUi_Renderer_GL2.cpp")
+	"Directory containing the RmlUi 6.3 Win32, GL2, and DX11 adapters")
+if(NOT EXISTS "${BLACKLIGHT_RMLUI_BACKENDS_DIRECTORY}/RmlUi_Renderer_GL2.cpp" OR
+   NOT EXISTS "${BLACKLIGHT_RMLUI_BACKENDS_DIRECTORY}/RmlUi_Renderer_DX11.cpp" OR
+   NOT EXISTS "${BLACKLIGHT_RMLUI_BACKENDS_DIRECTORY}/RmlUi_Platform_Win32.cpp")
 	if(NOT BLACKLIGHT_FETCH_DEPENDENCIES)
 		message(FATAL_ERROR "Set BLACKLIGHT_RMLUI_BACKENDS_DIRECTORY to the RmlUi 6.3 Backends directory.")
 	endif()
@@ -105,9 +107,11 @@ set(BLACKLIGHT_ENGINE_SOURCES
 	src/engine/rendering_device/RenderingResources.cpp
 	src/engine/rendering_device/CommandList.cpp
 	src/engine/rendering_device/Shader.cpp
+	src/engine/rendering_device/Win32Support.cpp
 	src/engine/rendering_device/opengl/OpenGLDevice.cpp
 	src/engine/rendering_device/d3d11/Direct3D11Device.cpp
 	"${BLACKLIGHT_RMLUI_BACKENDS_DIRECTORY}/RmlUi_Renderer_GL2.cpp"
+	"${BLACKLIGHT_RMLUI_BACKENDS_DIRECTORY}/RmlUi_Renderer_DX11.cpp"
 	"${BLACKLIGHT_RMLUI_BACKENDS_DIRECTORY}/RmlUi_Platform_Win32.cpp"
 )
 

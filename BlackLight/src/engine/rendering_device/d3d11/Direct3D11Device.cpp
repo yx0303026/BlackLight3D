@@ -5,6 +5,8 @@
 #include "../DeviceImplementation.h"
 #include "../CommandListInternal.h"
 #include "../RenderingResourcesInternal.h"
+#include "../Win32Support.h"
+#include "D3D11UiRenderer.h"
 #include "engine/Logger.h"
 #include "engine/rendering_device/Shader.h"
 
@@ -15,6 +17,7 @@
 #include <d3dcompiler.h>
 #include <dxgi.h>
 #include <wrl/client.h>
+#include <commctrl.h>
 
 #include <algorithm>
 #include <array>
@@ -22,6 +25,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -42,6 +46,26 @@ namespace BlackLight::Engine::Rendering::Detail
 		constexpr std::uint8_t kVertexStage = 1;
 		constexpr std::uint8_t kPixelStage = 2;
 		std::atomic<std::uint64_t> g_next_device_id{1};
+
+		/// Distinguishes recoverable device removal from other HRESULT failures.
+		void CheckD3DResult(ID3D11Device *device, HRESULT result, const char *operation,
+							RenderingError code = RenderingError::ResourceCreationFailed)
+		{
+			if (SUCCEEDED(result))
+				return;
+			const HRESULT reason = device ? device->GetDeviceRemovedReason() : S_OK;
+			if (FAILED(reason) || result == DXGI_ERROR_DEVICE_REMOVED ||
+				result == DXGI_ERROR_DEVICE_RESET || result == DXGI_ERROR_DEVICE_HUNG ||
+				result == DXGI_ERROR_DRIVER_INTERNAL_ERROR)
+				code = RenderingError::DeviceLost;
+			std::ostringstream message;
+			message << operation << " (HRESULT 0x" << std::hex
+					<< static_cast<unsigned long>(result);
+			if (FAILED(reason) && reason != result)
+				message << ", device reason 0x" << static_cast<unsigned long>(reason);
+			message << ')';
+			throw RenderingException(code, "Direct3D11", message.str());
+		}
 
 		/// Maps a public format to a DXGI format and its packed texel size.
 		bool MapFormat(ResourceFormat format, DXGI_FORMAT &native_format, std::uint32_t &byte_size)
@@ -227,9 +251,8 @@ namespace BlackLight::Engine::Rendering::Detail
 					buffer_desc.Usage = D3D11_USAGE_DEFAULT;
 					buffer_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 					ComPtr<ID3D11Buffer> buffer;
-					if (FAILED(device->CreateBuffer(&buffer_desc, nullptr, buffer.GetAddressOf())))
-						throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-												 "constant-buffer allocation failed");
+					CheckD3DResult(device, device->CreateBuffer(
+						&buffer_desc, nullptr, buffer.GetAddressOf()), "constant-buffer allocation failed");
 					buffer_index = static_cast<std::uint32_t>(constant_buffers.size());
 					constant_buffer_indices.emplace(key, buffer_index);
 					constant_buffers.push_back(std::move(buffer));
@@ -366,89 +389,200 @@ namespace BlackLight::Engine::Rendering::Detail
 	class Direct3D11Device::Impl
 	{
 	public:
-		/// Routes owned-window close and input messages to the D3D11 host.
-		static LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
+		/// Routes owned and attached window messages without replacing host window data.
+		static LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam,
+												LPARAM lparam, UINT_PTR, DWORD_PTR reference)
 		{
-			auto *self = reinterpret_cast<Impl *>(GetWindowLongPtrW(window, GWLP_USERDATA));
-			if (message == WM_NCCREATE)
-			{
-				const auto *creation = reinterpret_cast<const CREATESTRUCTW *>(lparam);
-				self = static_cast<Impl *>(creation->lpCreateParams);
-				SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
-			}
+			auto &self = *reinterpret_cast<Impl *>(reference);
 			if (message == WM_CLOSE)
 			{
-				if (self)
-					self->close = true;
-				DestroyWindow(window);
+				self.close = true;
+				return self.owns_window ? 0 : DefSubclassProc(window, message, wparam, lparam);
+			}
+			if (message == WM_NCDESTROY)
+			{
+				self.close = true;
+				self.width = self.height = 0;
+				if (self.ui_runtime)
+					self.ui_runtime->system.SetWindow(nullptr);
+				ReleaseWindowInput(self.input);
+			}
+			if (message == WM_SIZE)
+				self.resize_pending = true;
+			if (message == WM_DPICHANGED && self.owns_window)
+			{
+				const auto &bounds = *reinterpret_cast<const RECT *>(lparam);
+				SetWindowPos(window, nullptr, bounds.left, bounds.top,
+							 bounds.right - bounds.left, bounds.bottom - bounds.top,
+							 SWP_NOZORDER | SWP_NOACTIVATE);
+				self.resize_pending = true;
 				return 0;
 			}
-			if (message == WM_DESTROY)
+			if (self.ui_runtime)
+				self.ui_runtime->system.SetWindow(window);
+			if (!ForwardWindowInput(self.input, self.ui_context, self.ui_input.get(),
+									window, &self.ui_keys, message, wparam, lparam))
 				return 0;
-			if (message == WM_NCDESTROY && self)
+			return DefSubclassProc(window, message, wparam, lparam);
+		}
+
+		/// Detects asynchronous removal before calling the immediate context.
+		void CheckDevice() const
+		{
+			if (device)
+				CheckD3DResult(device.Get(), device->GetDeviceRemovedReason(),
+								"D3D11 device is unavailable", RenderingError::DeviceLost);
+		}
+
+		/// Updates client pixels and UI density independently of swap-chain allocation.
+		void SynchronizeSurface()
+		{
+			RECT bounds{};
+			if (window && GetClientRect(window, &bounds))
 			{
-				self->window = nullptr;
-				SetWindowLongPtrW(window, GWLP_USERDATA, 0);
+				const auto new_width = IsIconic(window) ? 0u :
+					static_cast<std::uint32_t>((std::max)(0L, bounds.right - bounds.left));
+				const auto new_height = IsIconic(window) ? 0u :
+					static_cast<std::uint32_t>((std::max)(0L, bounds.bottom - bounds.top));
+				resize_pending = resize_pending || width != new_width || height != new_height;
+				width = new_width;
+				height = new_height;
 			}
-			if (self && self->input)
+			else
 			{
-				switch (message)
-				{
-				case WM_KEYDOWN:
-				case WM_SYSKEYDOWN:
-					self->input->SetKeyDown(static_cast<std::uint32_t>(wparam), true);
-					break;
-				case WM_KEYUP:
-				case WM_SYSKEYUP:
-					self->input->SetKeyDown(static_cast<std::uint32_t>(wparam), false);
-					break;
-				case WM_MOUSEMOVE:
-					self->input->SetMousePosition(
-						{static_cast<float>(GET_X_LPARAM(lparam)),
-						 static_cast<float>(GET_Y_LPARAM(lparam))});
-					break;
-				case WM_LBUTTONDOWN:
-				case WM_LBUTTONUP:
-					self->input->SetMouseButtonDown(MouseButton::Left, message == WM_LBUTTONDOWN);
-					break;
-				case WM_RBUTTONDOWN:
-				case WM_RBUTTONUP:
-					self->input->SetMouseButtonDown(MouseButton::Right, message == WM_RBUTTONDOWN);
-					break;
-				case WM_MBUTTONDOWN:
-				case WM_MBUTTONUP:
-					self->input->SetMouseButtonDown(MouseButton::Middle, message == WM_MBUTTONDOWN);
-					break;
-				case WM_XBUTTONDOWN:
-				case WM_XBUTTONUP:
-					self->input->SetMouseButtonDown(
-						GET_XBUTTON_WPARAM(wparam) == XBUTTON1 ? MouseButton::X1 : MouseButton::X2,
-						message == WM_XBUTTONDOWN);
-					break;
-				case WM_MOUSEWHEEL:
-					self->input->AddMouseWheelDelta(
-						static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / WHEEL_DELTA);
-					break;
-				case WM_KILLFOCUS:
-					for (std::uint32_t key = 0; key < 512; ++key)
-						self->input->SetKeyDown(key, false);
-					for (int button = 0; button < static_cast<int>(MouseButton::Count); ++button)
-						self->input->SetMouseButtonDown(static_cast<MouseButton>(button), false);
-					break;
-				default:
-					break;
-				}
+				width = height = 0;
 			}
-			return DefWindowProcW(window, message, wparam, lparam);
+			if (ui_context)
+			{
+				ui_context->SetDimensions({static_cast<int>(width), static_cast<int>(height)});
+				ui_context->SetDensityIndependentPixelRatio(
+					static_cast<float>(GetWindowDpi(window)) / USER_DEFAULT_SCREEN_DPI);
+			}
+		}
+
+		/// Builds matching swap-chain color and D24S8 depth views transactionally.
+		void CreateSurfaceViews()
+		{
+			ComPtr<ID3D11Texture2D> back_buffer;
+			CheckD3DResult(device.Get(), swap_chain->GetBuffer(
+				0, IID_PPV_ARGS(back_buffer.GetAddressOf())), "swap-chain GetBuffer failed");
+			D3D11_TEXTURE2D_DESC depth_desc{};
+			back_buffer->GetDesc(&depth_desc);
+			const UINT buffer_width = depth_desc.Width;
+			const UINT buffer_height = depth_desc.Height;
+			ComPtr<ID3D11RenderTargetView> color;
+			CheckD3DResult(device.Get(), device->CreateRenderTargetView(
+				back_buffer.Get(), nullptr, color.GetAddressOf()), "swap-chain RTV creation failed");
+			depth_desc.MipLevels = 1;
+			depth_desc.ArraySize = 1;
+			depth_desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+			depth_desc.Usage = D3D11_USAGE_DEFAULT;
+			depth_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+			depth_desc.CPUAccessFlags = 0;
+			depth_desc.MiscFlags = 0;
+			ComPtr<ID3D11Texture2D> depth;
+			ComPtr<ID3D11DepthStencilView> view;
+			CheckD3DResult(device.Get(), device->CreateTexture2D(
+				&depth_desc, nullptr, depth.GetAddressOf()), "default depth texture creation failed");
+			CheckD3DResult(device.Get(), device->CreateDepthStencilView(
+				depth.Get(), nullptr, view.GetAddressOf()), "default depth view creation failed");
+			render_target = std::move(color);
+			depth_texture = std::move(depth);
+			depth_view = std::move(view);
+			buffer_width_ = buffer_width;
+			buffer_height_ = buffer_height;
+		}
+
+		/// Unbinds swap-chain references before deferred resizing outside the WndProc.
+		void ResizeSurface()
+		{
+			if (!device || !resize_pending || !width || !height)
+				return;
+			CheckDevice();
+			if (width != buffer_width_ || height != buffer_height_)
+			{
+				context->OMSetRenderTargets(0, nullptr, nullptr);
+				render_target.Reset();
+				depth_view.Reset();
+				depth_texture.Reset();
+				CheckD3DResult(device.Get(), swap_chain->ResizeBuffers(
+					0, width, height, DXGI_FORMAT_UNKNOWN, 0),
+					"swap-chain ResizeBuffers failed", RenderingError::PresentationFailed);
+			}
+			if (!render_target || !depth_view)
+				CreateSurfaceViews();
+			resize_pending = false;
+		}
+
+		/// Creates device resources for initialization and recovery on the same HWND.
+		void CreateDevice()
+		{
+			DXGI_SWAP_CHAIN_DESC swap_desc{};
+			swap_desc.BufferCount = 2;
+			swap_desc.BufferDesc.Width = (std::max)(1u, width);
+			swap_desc.BufferDesc.Height = (std::max)(1u, height);
+			swap_desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			swap_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+			swap_desc.OutputWindow = window;
+			swap_desc.SampleDesc.Count = 1;
+			swap_desc.Windowed = TRUE;
+			swap_desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+			const D3D_FEATURE_LEVEL requested[] = {D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1};
+			CheckD3DResult(nullptr, D3D11CreateDeviceAndSwapChain(
+				nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, requested,
+				static_cast<UINT>(std::size(requested)), D3D11_SDK_VERSION, &swap_desc,
+				swap_chain.GetAddressOf(), device.GetAddressOf(), &feature_level,
+				context.GetAddressOf()), "D3D11CreateDeviceAndSwapChain failed",
+				RenderingError::DeviceCreationFailed);
+			CreateSurfaceViews();
+			capabilities = {};
+			capabilities.max_texture_width = feature_level >= D3D_FEATURE_LEVEL_11_0 ? 16384u : 8192u;
+			capabilities.max_texture_height = capabilities.max_texture_width;
+			capabilities.max_render_targets = D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT;
+			capabilities.compute_shaders = feature_level >= D3D_FEATURE_LEVEL_11_0;
+			capabilities.storage_buffers = feature_level >= D3D_FEATURE_LEVEL_11_0;
+			for (UINT samples = 1; samples <= 32; samples *= 2)
+			{
+				UINT quality = 0;
+				if (SUCCEEDED(device->CheckMultisampleQualityLevels(
+					DXGI_FORMAT_R8G8B8A8_UNORM, samples, &quality)) && quality)
+					capabilities.max_samples = samples;
+			}
+			device_id = g_next_device_id.fetch_add(1, std::memory_order_relaxed);
+			lifetime->Activate(true);
+			resize_pending = false;
+		}
+
+		/// Releases every old-device reference before creating another swap chain.
+		void ReleaseDevice() noexcept
+		{
+			if (context)
+				context->ClearState();
+			active_color_target.reset();
+			active_depth_target.reset();
+			lifetime->Shutdown();
+			render_target.Reset();
+			depth_view.Reset();
+			depth_texture.Reset();
+			swap_chain.Reset();
+			if (context)
+				context->Flush();
+			context.Reset();
+			device.Reset();
+			buffer_width_ = buffer_height_ = 0;
 		}
 
 		DeviceConfig config{};
 		InputState *input = nullptr;
 		HWND window = nullptr;
 		bool owns_window = false;
+		bool subclassed = false;
 		bool close = false;
+		bool resize_pending = false;
 		std::uint32_t width = 0;
 		std::uint32_t height = 0;
+		std::uint32_t buffer_width_ = 0;
+		std::uint32_t buffer_height_ = 0;
 		D3D_FEATURE_LEVEL feature_level = D3D_FEATURE_LEVEL_10_1;
 		ComPtr<ID3D11Device> device;
 		ComPtr<ID3D11DeviceContext> context;
@@ -461,6 +595,11 @@ namespace BlackLight::Engine::Rendering::Detail
 		::BlackLight::Engine::Rendering::DeviceCapabilities capabilities{};
 		std::shared_ptr<Texture::Impl> active_color_target;
 		std::shared_ptr<Texture::Impl> active_depth_target;
+		std::shared_ptr<UiRuntime> ui_runtime;
+		std::unique_ptr<D3D11UiRenderer> ui_renderer;
+		std::unique_ptr<TextInputMethodEditor_Win32> ui_input;
+		std::array<bool, 256> ui_keys{};
+		Rml::Context *ui_context = nullptr;
 	};
 
 	/// Creates an uninitialized D3D11 device.
@@ -474,116 +613,95 @@ namespace BlackLight::Engine::Rendering::Detail
 	/// Initializes the D3D11 device, swap chain, default RTV, and depth target.
 	void Direct3D11Device::Initialize(const DeviceConfig &config, InputState *input)
 	{
-		if (impl_->device)
+		if (impl_->window)
 			throw RenderingException(RenderingError::InvalidConfiguration, "Direct3D11",
 									 "device is already initialized");
 		if (!config.surface.width || !config.surface.height)
 			throw RenderingException(RenderingError::InvalidConfiguration, "Direct3D11",
 									 "surface dimensions must be non-zero");
-		impl_->device_id = g_next_device_id.fetch_add(1, std::memory_order_relaxed);
 		impl_->config = config;
 		impl_->input = input;
 		impl_->close = false;
 		impl_->width = config.surface.width;
 		impl_->height = config.surface.height;
 
-		if (config.surface.mode == SurfaceMode::AttachWindow)
+		try
 		{
-			impl_->window = reinterpret_cast<HWND>(config.surface.native_window);
-			if (!IsWindow(impl_->window))
-				throw RenderingException(RenderingError::InvalidConfiguration, "Direct3D11",
-										 "external HWND is invalid");
+			if (config.surface.mode == SurfaceMode::AttachWindow)
+			{
+				impl_->window = reinterpret_cast<HWND>(config.surface.native_window);
+				if (!IsWindow(impl_->window))
+					throw RenderingException(RenderingError::InvalidConfiguration, "Direct3D11",
+											 "external HWND is invalid");
+			}
+			else
+			{
+				WNDCLASSW window_class{};
+				window_class.lpfnWndProc = DefWindowProcW;
+				window_class.hInstance = GetModuleHandleW(nullptr);
+				window_class.lpszClassName = kWindowClass;
+				window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
+				if (!RegisterClassW(&window_class) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
+					throw RenderingException(RenderingError::WindowCreationFailed, "Direct3D11",
+											 "RegisterClassW failed");
+				const std::wstring title = RmlWin32::ConvertToUTF16(config.surface.title);
+				const DWORD style = config.surface.resizable ? WS_OVERLAPPEDWINDOW :
+					(WS_OVERLAPPEDWINDOW & ~WS_SIZEBOX & ~WS_MAXIMIZEBOX);
+				impl_->window = CreateWindowExW(0, kWindowClass, title.c_str(), style,
+					CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+				if (!impl_->window)
+					throw RenderingException(RenderingError::WindowCreationFailed, "Direct3D11",
+											 "CreateWindowExW failed");
+				impl_->owns_window = true;
+				RECT bounds{0, 0, static_cast<LONG>(config.surface.width),
+							static_cast<LONG>(config.surface.height)};
+				AdjustClientBounds(bounds, style, GetWindowDpi(impl_->window));
+				SetWindowPos(impl_->window, nullptr, 0, 0, bounds.right - bounds.left,
+							 bounds.bottom - bounds.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+			}
+			if (!SetWindowSubclass(impl_->window, Impl::WindowProcedure,
+					reinterpret_cast<UINT_PTR>(impl_.get()), reinterpret_cast<DWORD_PTR>(impl_.get())))
+				throw RenderingException(RenderingError::WindowCreationFailed, "Direct3D11",
+										 "window input handler setup failed");
+			impl_->subclassed = true;
+			impl_->SynchronizeSurface();
+			impl_->CreateDevice();
+			if (config.enable_ui)
+			{
+				impl_->ui_runtime = UiRuntime::Acquire("Direct3D11");
+				impl_->ui_runtime->system.SetWindow(impl_->window);
+				impl_->ui_renderer = std::make_unique<D3D11UiRenderer>();
+				impl_->ui_renderer->Initialize(impl_->device.Get());
+				impl_->ui_input = std::make_unique<TextInputMethodEditor_Win32>();
+				const std::string name = "blacklight-d3d11-" +
+					std::to_string(reinterpret_cast<std::uintptr_t>(impl_.get()));
+				impl_->ui_context = Rml::CreateContext(name,
+					{static_cast<int>(impl_->width), static_cast<int>(impl_->height)},
+					impl_->ui_renderer.get(), impl_->ui_input.get());
+				if (!impl_->ui_context)
+					throw RenderingException(RenderingError::DeviceCreationFailed, "Direct3D11",
+											 "RmlUi context creation failed");
+				impl_->SynchronizeSurface();
+			}
+			if (impl_->owns_window)
+				ShowWindow(impl_->window, SW_SHOW);
 		}
-		else
+		catch (...)
 		{
-			WNDCLASSW window_class{};
-			window_class.lpfnWndProc = Impl::WindowProcedure;
-			window_class.hInstance = GetModuleHandleW(nullptr);
-			window_class.lpszClassName = kWindowClass;
-			window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
-			if (!RegisterClassW(&window_class) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
-				throw RenderingException(RenderingError::WindowCreationFailed, "Direct3D11",
-										 "RegisterClassW failed");
-			const std::wstring title(config.surface.title.begin(), config.surface.title.end());
-			const DWORD style = config.surface.resizable
-									? WS_OVERLAPPEDWINDOW
-									: (WS_OVERLAPPEDWINDOW & ~WS_SIZEBOX & ~WS_MAXIMIZEBOX);
-			RECT bounds{0, 0, static_cast<LONG>(config.surface.width),
-						static_cast<LONG>(config.surface.height)};
-			AdjustWindowRect(&bounds, style, FALSE);
-			impl_->window = CreateWindowExW(
-				0, kWindowClass, title.c_str(), style, CW_USEDEFAULT, CW_USEDEFAULT,
-				bounds.right - bounds.left, bounds.bottom - bounds.top,
-				nullptr, nullptr, GetModuleHandleW(nullptr), impl_.get());
-			if (!impl_->window)
-				throw RenderingException(RenderingError::WindowCreationFailed, "Direct3D11",
-										 "CreateWindowExW failed");
-			impl_->owns_window = true;
+			Shutdown();
+			throw;
 		}
-
-		DXGI_SWAP_CHAIN_DESC swap_desc{};
-		swap_desc.BufferCount = 2;
-		swap_desc.BufferDesc.Width = config.surface.width;
-		swap_desc.BufferDesc.Height = config.surface.height;
-		swap_desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		swap_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-		swap_desc.OutputWindow = impl_->window;
-		swap_desc.SampleDesc.Count = 1;
-		swap_desc.Windowed = TRUE;
-		swap_desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-		const D3D_FEATURE_LEVEL requested[] = {D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1};
-		const HRESULT device_result = D3D11CreateDeviceAndSwapChain(
-			nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, requested,
-			static_cast<UINT>(std::size(requested)), D3D11_SDK_VERSION,
-			&swap_desc, impl_->swap_chain.GetAddressOf(), impl_->device.GetAddressOf(),
-			&impl_->feature_level, impl_->context.GetAddressOf());
-		if (FAILED(device_result))
-			throw RenderingException(RenderingError::DeviceCreationFailed, "Direct3D11",
-									 "D3D11CreateDeviceAndSwapChain failed");
-
-		ComPtr<ID3D11Texture2D> back_buffer;
-		if (FAILED(impl_->swap_chain->GetBuffer(
-				0, IID_PPV_ARGS(back_buffer.GetAddressOf()))) ||
-			FAILED(impl_->device->CreateRenderTargetView(
-				back_buffer.Get(), nullptr, impl_->render_target.GetAddressOf())))
-			throw RenderingException(RenderingError::DeviceCreationFailed, "Direct3D11",
-									 "swap-chain render-target creation failed");
-
-		D3D11_TEXTURE2D_DESC depth_desc{};
-		depth_desc.Width = config.surface.width;
-		depth_desc.Height = config.surface.height;
-		depth_desc.MipLevels = 1;
-		depth_desc.ArraySize = 1;
-		depth_desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-		depth_desc.SampleDesc.Count = 1;
-		depth_desc.Usage = D3D11_USAGE_DEFAULT;
-		depth_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-		if (FAILED(impl_->device->CreateTexture2D(
-				&depth_desc, nullptr, impl_->depth_texture.GetAddressOf())) ||
-			FAILED(impl_->device->CreateDepthStencilView(
-				impl_->depth_texture.Get(), nullptr, impl_->depth_view.GetAddressOf())))
-			throw RenderingException(RenderingError::DeviceCreationFailed, "Direct3D11",
-									 "default depth-stencil target creation failed");
-
-		impl_->capabilities.max_texture_width =
-			impl_->feature_level >= D3D_FEATURE_LEVEL_11_0 ? 16384u : 8192u;
-		impl_->capabilities.max_texture_height = impl_->capabilities.max_texture_width;
-		impl_->capabilities.max_render_targets = D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT;
-		impl_->capabilities.compute_shaders = impl_->feature_level >= D3D_FEATURE_LEVEL_11_0;
-		impl_->capabilities.storage_buffers = impl_->feature_level >= D3D_FEATURE_LEVEL_11_0;
-		UINT quality_levels = 0;
-		for (UINT samples = 1; samples <= 32; samples *= 2)
-			if (SUCCEEDED(impl_->device->CheckMultisampleQualityLevels(
-					DXGI_FORMAT_R8G8B8A8_UNORM, samples, &quality_levels)) && quality_levels)
-				impl_->capabilities.max_samples = samples;
-
-		impl_->lifetime->Activate(true);
-		ShowWindow(impl_->window, SW_SHOW);
 	}
 
 	/// Pumps Win32 messages and refreshes the current client dimensions.
 	bool Direct3D11Device::ProcessEvents()
 	{
+		if (impl_->ui_runtime)
+		{
+			if (impl_->close)
+				return false;
+			impl_->ui_runtime->system.SetWindow(impl_->window);
+		}
 		MSG message{};
 		while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
 		{
@@ -592,24 +710,30 @@ namespace BlackLight::Engine::Rendering::Detail
 			TranslateMessage(&message);
 			DispatchMessageW(&message);
 		}
-		RECT rectangle{};
-		if (impl_->window && GetClientRect(impl_->window, &rectangle))
-		{
-			impl_->width = static_cast<std::uint32_t>((std::max)(0L, rectangle.right - rectangle.left));
-			impl_->height = static_cast<std::uint32_t>((std::max)(0L, rectangle.bottom - rectangle.top));
-		}
+		if (impl_->close)
+			return false;
+		impl_->CheckDevice();
+		impl_->SynchronizeSurface();
+		impl_->ResizeSurface();
 		impl_->lifetime->Flush();
+		if (!impl_->width || !impl_->height)
+			MsgWaitForMultipleObjectsEx(0, nullptr, 16, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
 		return !impl_->close;
 	}
 
 	/// Clears and binds the swap-chain color and default depth targets.
 	void Direct3D11Device::BeginFrame()
 	{
+		impl_->CheckDevice();
+		impl_->SynchronizeSurface();
+		impl_->ResizeSurface();
 		if (!impl_->context || !impl_->render_target || !impl_->depth_view)
 			throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
 									 "device is not initialized");
 		impl_->active_color_target.reset();
 		impl_->active_depth_target.reset();
+		if (!impl_->width || !impl_->height)
+			return;
 		ID3D11RenderTargetView *targets[] = {impl_->render_target.Get()};
 		impl_->context->OMSetRenderTargets(1, targets, impl_->depth_view.Get());
 		D3D11_VIEWPORT viewport{};
@@ -622,11 +746,13 @@ namespace BlackLight::Engine::Rendering::Detail
 		impl_->context->ClearRenderTargetView(impl_->render_target.Get(), color);
 		impl_->context->ClearDepthStencilView(
 			impl_->depth_view.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+		impl_->CheckDevice();
 	}
 
 	/// Clears and binds an optional off-screen color and depth target pair.
 	void Direct3D11Device::BeginFrame(const Texture *color_target, const Texture *depth_target)
 	{
+		impl_->CheckDevice();
 		if (!impl_->context)
 			throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
 									 "device is not initialized");
@@ -688,18 +814,81 @@ namespace BlackLight::Engine::Rendering::Detail
 		if (depth_view)
 			impl_->context->ClearDepthStencilView(
 				depth_view, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+		impl_->CheckDevice();
 	}
 
-	/// Does nothing until a D3D11 RmlUi adapter is available.
-	void Direct3D11Device::RenderUi() {}
+	/// Composes RmlUi onto the window while preserving application D3D11 bindings.
+	void Direct3D11Device::RenderUi()
+	{
+		if (!impl_->ui_context || impl_->close)
+			return;
+		impl_->CheckDevice();
+		impl_->SynchronizeSurface();
+		impl_->ResizeSurface();
+		if (!impl_->width || !impl_->height)
+			return;
+		impl_->ui_runtime->system.SetWindow(impl_->window);
+		impl_->ui_context->Update();
+		D3D11UiBindings bindings(impl_->context.Get());
+		auto &renderer = impl_->ui_renderer->GetRenderer();
+		renderer.SetViewport(static_cast<int>(impl_->width), static_cast<int>(impl_->height));
+		renderer.BeginFrame();
+		try
+		{
+			impl_->ui_context->Render();
+		}
+		catch (...)
+		{
+			renderer.EndFrame(impl_->render_target.Get());
+			throw;
+		}
+		renderer.EndFrame(impl_->render_target.Get());
+		impl_->CheckDevice();
+	}
 
 	/// Presents the current swap-chain buffer.
 	void Direct3D11Device::Present()
 	{
-		if (!impl_->swap_chain ||
-			FAILED(impl_->swap_chain->Present(impl_->config.surface.vertical_sync ? 1 : 0, 0)))
+		if (!impl_->swap_chain)
 			throw RenderingException(RenderingError::PresentationFailed, "Direct3D11",
-									 "swap-chain Present failed");
+									 "device is not initialized");
+		if (impl_->close || !impl_->width || !impl_->height)
+			return;
+		CheckD3DResult(impl_->device.Get(),
+			impl_->swap_chain->Present(impl_->config.surface.vertical_sync ? 1 : 0, 0),
+			"swap-chain Present failed", RenderingError::PresentationFailed);
+	}
+
+	/// Recreates the native device while retaining the HWND, UI documents, and input sink.
+	void Direct3D11Device::Recover()
+	{
+		if (!impl_->window || !IsWindow(impl_->window) || impl_->close)
+			throw RenderingException(RenderingError::DeviceRecoveryFailed, "Direct3D11",
+									 "recovery requires a live surface");
+		BL_LOG(LogLevel::Warning, "Direct3D11", "Recreating the rendering device");
+		try
+		{
+			ReleaseWindowInput(impl_->input);
+			if (impl_->ui_renderer)
+				impl_->ui_renderer->ReleaseDeviceResources();
+			impl_->ReleaseDevice();
+			impl_->SynchronizeSurface();
+			impl_->CreateDevice();
+			if (impl_->ui_renderer)
+			{
+				impl_->ui_renderer->Initialize(impl_->device.Get());
+				Rml::ReleaseFontResources();
+			}
+			impl_->SynchronizeSurface();
+			BL_LOG(LogLevel::Info, "Direct3D11", "Rendering device restored");
+		}
+		catch (const std::exception &error)
+		{
+			if (impl_->ui_renderer)
+				impl_->ui_renderer->ReleaseDeviceResources();
+			impl_->ReleaseDevice();
+			throw RenderingException(RenderingError::DeviceRecoveryFailed, "Direct3D11", error.what());
+		}
 	}
 
 	/// Destroys resource callbacks before releasing the D3D11 context and device.
@@ -707,19 +896,32 @@ namespace BlackLight::Engine::Rendering::Detail
 	{
 		if (!impl_)
 			return;
-		impl_->lifetime->Shutdown();
-		impl_->active_color_target.reset();
-		impl_->active_depth_target.reset();
-		impl_->render_target.Reset();
-		impl_->depth_view.Reset();
-		impl_->depth_texture.Reset();
-		impl_->swap_chain.Reset();
-		impl_->context.Reset();
-		impl_->device.Reset();
+		if (impl_->ui_context)
+		{
+			Rml::RemoveContext(impl_->ui_context->GetName());
+			impl_->ui_context = nullptr;
+		}
+		if (impl_->ui_runtime)
+			Rml::ReleaseRenderManagers();
+		impl_->ui_input.reset();
+		impl_->ui_renderer.reset();
+		if (impl_->ui_runtime)
+		{
+			impl_->ui_runtime->system.SetWindow(nullptr);
+			impl_->ui_runtime.reset();
+		}
+		impl_->ReleaseDevice();
+		if (impl_->subclassed && IsWindow(impl_->window))
+			RemoveWindowSubclass(impl_->window, Impl::WindowProcedure,
+								 reinterpret_cast<UINT_PTR>(impl_.get()));
+		impl_->subclassed = false;
 		if (impl_->owns_window && impl_->window && IsWindow(impl_->window))
 			DestroyWindow(impl_->window);
 		impl_->window = nullptr;
 		impl_->owns_window = false;
+		impl_->close = true;
+		impl_->width = impl_->height = 0;
+		impl_->input = nullptr;
 	}
 
 	/// Returns the current client dimensions and close state.
@@ -743,11 +945,14 @@ namespace BlackLight::Engine::Rendering::Detail
 		return reinterpret_cast<NativeWindowHandle>(impl_->window);
 	}
 
-	/// Returns no UI context until a D3D11 UI adapter is initialized.
-	Rml::Context *Direct3D11Device::GetUiContext() const noexcept { return nullptr; }
+	/// Returns the UI context when UI was enabled during initialization.
+	Rml::Context *Direct3D11Device::GetUiContext() const noexcept { return impl_->ui_context; }
 
-	/// Returns no UI system interface until a D3D11 UI adapter is initialized.
-	Rml::SystemInterface *Direct3D11Device::GetUiSystemInterface() const noexcept { return nullptr; }
+	/// Returns the shared Win32 platform services while UI is initialized.
+	Rml::SystemInterface *Direct3D11Device::GetUiSystemInterface() const noexcept
+	{
+		return impl_->ui_runtime ? &impl_->ui_runtime->system : nullptr;
+	}
 
 	/// Creates a normalized command list.
 	CommandList Direct3D11Device::CreateCommandList() { return {}; }
@@ -755,6 +960,7 @@ namespace BlackLight::Engine::Rendering::Detail
 	/// Executes the ordered command queue using D3D11 resources and immediate context.
 	void Direct3D11Device::Submit(CommandList &commands)
 	{
+		impl_->CheckDevice();
 		if (!impl_->device || !impl_->context || !commands.impl_)
 			throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
 									 "device is not initialized or command list was moved from");
@@ -1051,6 +1257,7 @@ namespace BlackLight::Engine::Rendering::Detail
 		pipeline.reset();
 		vertex_buffer.reset();
 		index_buffer.reset();
+		impl_->CheckDevice();
 		commands.Clear();
 		impl_->lifetime->Flush();
 	}
@@ -1058,6 +1265,7 @@ namespace BlackLight::Engine::Rendering::Detail
 	/// Creates a checked D3D11 vertex, index, constant, or raw storage buffer.
 	Buffer Direct3D11Device::CreateBuffer(const BufferDesc &description)
 	{
+		impl_->CheckDevice();
 		if (!impl_->device || !impl_->context || !description.size ||
 			description.size > std::numeric_limits<UINT>::max())
 			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
@@ -1095,10 +1303,9 @@ namespace BlackLight::Engine::Rendering::Detail
 		D3D11_SUBRESOURCE_DATA initial{};
 		initial.pSysMem = description.initial_data;
 		ComPtr<ID3D11Buffer> buffer;
-		if (FAILED(impl_->device->CreateBuffer(
-				&native_desc, description.initial_data ? &initial : nullptr, buffer.GetAddressOf())))
-			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-									 "ID3D11Device::CreateBuffer failed");
+		CheckD3DResult(impl_->device.Get(), impl_->device->CreateBuffer(
+			&native_desc, description.initial_data ? &initial : nullptr, buffer.GetAddressOf()),
+			"ID3D11Device::CreateBuffer failed");
 
 		ComPtr<ID3D11ShaderResourceView> storage_view;
 		ComPtr<ID3D11UnorderedAccessView> storage_unordered_view;
@@ -1110,20 +1317,18 @@ namespace BlackLight::Engine::Rendering::Detail
 			view_desc.BufferEx.FirstElement = 0;
 			view_desc.BufferEx.NumElements = static_cast<UINT>(description.size / 4);
 			view_desc.BufferEx.Flags = D3D11_BUFFEREX_SRV_FLAG_RAW;
-			if (FAILED(impl_->device->CreateShaderResourceView(
-					buffer.Get(), &view_desc, storage_view.GetAddressOf())))
-				throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-										 "raw storage-buffer view creation failed");
+			CheckD3DResult(impl_->device.Get(), impl_->device->CreateShaderResourceView(
+				buffer.Get(), &view_desc, storage_view.GetAddressOf()),
+				"raw storage-buffer view creation failed");
 			D3D11_UNORDERED_ACCESS_VIEW_DESC unordered_view_desc{};
 			unordered_view_desc.Format = DXGI_FORMAT_R32_TYPELESS;
 			unordered_view_desc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
 			unordered_view_desc.Buffer.FirstElement = 0;
 			unordered_view_desc.Buffer.NumElements = static_cast<UINT>(description.size / 4);
 			unordered_view_desc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
-			if (FAILED(impl_->device->CreateUnorderedAccessView(
-					buffer.Get(), &unordered_view_desc, storage_unordered_view.GetAddressOf())))
-				throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-										 "raw storage-buffer UAV creation failed");
+			CheckD3DResult(impl_->device.Get(), impl_->device->CreateUnorderedAccessView(
+				buffer.Get(), &unordered_view_desc, storage_unordered_view.GetAddressOf()),
+				"raw storage-buffer UAV creation failed");
 		}
 
 		auto resource = std::make_shared<Buffer::Impl>();
@@ -1150,6 +1355,7 @@ namespace BlackLight::Engine::Rendering::Detail
 	/// Creates a checked D3D11 2D texture, sampler, and optional RTV or DSV.
 	Texture Direct3D11Device::CreateTexture(const TextureDesc &description)
 	{
+		impl_->CheckDevice();
 		if (!impl_->device || !impl_->context)
 			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
 									 "device is not initialized");
@@ -1184,9 +1390,11 @@ namespace BlackLight::Engine::Rendering::Detail
 		if (multisampled)
 		{
 			UINT quality_levels = 0;
-			if (FAILED(impl_->device->CheckMultisampleQualityLevels(
-					format, description.sample_count, &quality_levels)) ||
-				!quality_levels)
+			const HRESULT quality_result = impl_->device->CheckMultisampleQualityLevels(
+				format, description.sample_count, &quality_levels);
+			CheckD3DResult(impl_->device.Get(), quality_result,
+						   "texture multisample query failed");
+			if (!quality_levels)
 				throw RenderingException(RenderingError::UnsupportedOperation, "Direct3D11",
 										 "texture format does not support the requested sample count");
 		}
@@ -1247,12 +1455,9 @@ namespace BlackLight::Engine::Rendering::Detail
 			native_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE |
 									(description.render_target ? D3D11_BIND_RENDER_TARGET : 0);
 		ComPtr<ID3D11Texture2D> texture;
-		if (FAILED(impl_->device->CreateTexture2D(
-				&native_desc,
-				initial_subresources.empty() ? nullptr : initial_subresources.data(),
-				texture.GetAddressOf())))
-			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-									 "ID3D11Device::CreateTexture2D failed");
+		CheckD3DResult(impl_->device.Get(), impl_->device->CreateTexture2D(
+			&native_desc, initial_subresources.empty() ? nullptr : initial_subresources.data(),
+			texture.GetAddressOf()), "ID3D11Device::CreateTexture2D failed");
 
 		ComPtr<ID3D11ShaderResourceView> shader_view;
 		ComPtr<ID3D11SamplerState> sampler;
@@ -1266,10 +1471,9 @@ namespace BlackLight::Engine::Rendering::Detail
 				view_desc.Format = format;
 				view_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 				view_desc.Texture2D.MipLevels = description.mip_levels;
-				if (FAILED(impl_->device->CreateShaderResourceView(
-						texture.Get(), &view_desc, shader_view.GetAddressOf())))
-					throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-											 "texture shader-resource view creation failed");
+				CheckD3DResult(impl_->device.Get(), impl_->device->CreateShaderResourceView(
+					texture.Get(), &view_desc, shader_view.GetAddressOf()),
+					"texture shader-resource view creation failed");
 
 				D3D11_SAMPLER_DESC sampler_desc{};
 				sampler_desc.Filter = MapSamplerFilter(
@@ -1282,10 +1486,8 @@ namespace BlackLight::Engine::Rendering::Detail
 				sampler_desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
 				sampler_desc.MinLOD = 0.0f;
 				sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
-				if (FAILED(impl_->device->CreateSamplerState(
-						&sampler_desc, sampler.GetAddressOf())))
-					throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-											 "texture sampler creation failed");
+				CheckD3DResult(impl_->device.Get(), impl_->device->CreateSamplerState(
+					&sampler_desc, sampler.GetAddressOf()), "texture sampler creation failed");
 			}
 			if (description.render_target)
 			{
@@ -1300,10 +1502,9 @@ namespace BlackLight::Engine::Rendering::Detail
 					target_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 					target_desc.Texture2D.MipSlice = 0;
 				}
-				if (FAILED(impl_->device->CreateRenderTargetView(
-						texture.Get(), &target_desc, render_target_view.GetAddressOf())))
-					throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-											 "texture render-target view creation failed");
+				CheckD3DResult(impl_->device.Get(), impl_->device->CreateRenderTargetView(
+					texture.Get(), &target_desc, render_target_view.GetAddressOf()),
+					"texture render-target view creation failed");
 			}
 		}
 		else
@@ -1319,10 +1520,9 @@ namespace BlackLight::Engine::Rendering::Detail
 				view_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
 				view_desc.Texture2D.MipSlice = 0;
 			}
-			if (FAILED(impl_->device->CreateDepthStencilView(
-					texture.Get(), &view_desc, depth_view.GetAddressOf())))
-				throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-										 "texture depth-stencil view creation failed");
+			CheckD3DResult(impl_->device.Get(), impl_->device->CreateDepthStencilView(
+				texture.Get(), &view_desc, depth_view.GetAddressOf()),
+				"texture depth-stencil view creation failed");
 		}
 
 		auto resource = std::make_shared<Texture::Impl>();
@@ -1357,6 +1557,7 @@ namespace BlackLight::Engine::Rendering::Detail
 	/// Resolves a multisampled color target into a single-sample render target.
 	void Direct3D11Device::ResolveTexture(const Texture &source, const Texture &destination)
 	{
+		impl_->CheckDevice();
 		if (!impl_->device || !impl_->context)
 			throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
 									 "device is not initialized");
@@ -1417,12 +1618,14 @@ namespace BlackLight::Engine::Rendering::Detail
 			context->OMSetRenderTargets(render_target ? 1u : 0u,
 										render_target ? &render_target : nullptr, depth_view);
 		}
+		impl_->CheckDevice();
 	}
 
 	/// Compiles HLSL stages and creates D3D11 input layout and fixed-function states.
 	GraphicsPipeline Direct3D11Device::CreateGraphicsPipeline(
 		const GraphicsPipelineDesc &description)
 	{
+		impl_->CheckDevice();
 		if (!impl_->device || !impl_->context)
 			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
 									 "device is not initialized");
@@ -1458,14 +1661,12 @@ namespace BlackLight::Engine::Rendering::Detail
 
 		ComPtr<ID3D11VertexShader> vertex_shader;
 		ComPtr<ID3D11PixelShader> pixel_shader;
-		if (FAILED(impl_->device->CreateVertexShader(
-				vertex_bytecode->GetBufferPointer(), vertex_bytecode->GetBufferSize(),
-				nullptr, vertex_shader.GetAddressOf())) ||
-			FAILED(impl_->device->CreatePixelShader(
-				pixel_bytecode->GetBufferPointer(), pixel_bytecode->GetBufferSize(),
-				nullptr, pixel_shader.GetAddressOf())))
-			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-									 "D3D11 shader object creation failed");
+		CheckD3DResult(impl_->device.Get(), impl_->device->CreateVertexShader(
+			vertex_bytecode->GetBufferPointer(), vertex_bytecode->GetBufferSize(),
+			nullptr, vertex_shader.GetAddressOf()), "vertex shader object creation failed");
+		CheckD3DResult(impl_->device.Get(), impl_->device->CreatePixelShader(
+			pixel_bytecode->GetBufferPointer(), pixel_bytecode->GetBufferSize(),
+			nullptr, pixel_shader.GetAddressOf()), "pixel shader object creation failed");
 
 		std::vector<D3D11_INPUT_ELEMENT_DESC> input_elements;
 		std::vector<std::string> semantic_names;
@@ -1505,13 +1706,11 @@ namespace BlackLight::Engine::Rendering::Detail
 		}
 
 		ComPtr<ID3D11InputLayout> input_layout;
-		if (!input_elements.empty() &&
-			FAILED(impl_->device->CreateInputLayout(
+		if (!input_elements.empty())
+			CheckD3DResult(impl_->device.Get(), impl_->device->CreateInputLayout(
 				input_elements.data(), static_cast<UINT>(input_elements.size()),
 				vertex_bytecode->GetBufferPointer(), vertex_bytecode->GetBufferSize(),
-				input_layout.GetAddressOf())))
-			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-									 "input layout does not match the vertex shader signature");
+				input_layout.GetAddressOf()), "input layout does not match the vertex shader signature");
 
 		D3D11_RASTERIZER_DESC raster_desc{};
 		raster_desc.FillMode = D3D11_FILL_SOLID;
@@ -1524,9 +1723,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		raster_desc.DepthClipEnable = TRUE;
 		raster_desc.MultisampleEnable = description.sample_count > 1 ? TRUE : FALSE;
 		ComPtr<ID3D11RasterizerState> raster_state;
-		if (FAILED(impl_->device->CreateRasterizerState(&raster_desc, raster_state.GetAddressOf())))
-			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-									 "rasterizer-state creation failed");
+		CheckD3DResult(impl_->device.Get(), impl_->device->CreateRasterizerState(
+			&raster_desc, raster_state.GetAddressOf()), "rasterizer-state creation failed");
 
 		D3D11_BLEND_DESC blend_desc{};
 		blend_desc.AlphaToCoverageEnable = FALSE;
@@ -1541,9 +1739,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		render_target_blend.BlendOpAlpha = D3D11_BLEND_OP_ADD;
 		render_target_blend.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
 		ComPtr<ID3D11BlendState> blend_state;
-		if (FAILED(impl_->device->CreateBlendState(&blend_desc, blend_state.GetAddressOf())))
-			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-									 "blend-state creation failed");
+		CheckD3DResult(impl_->device.Get(), impl_->device->CreateBlendState(
+			&blend_desc, blend_state.GetAddressOf()), "blend-state creation failed");
 
 		D3D11_DEPTH_STENCIL_DESC depth_desc{};
 		depth_desc.DepthEnable = description.depth_test;
@@ -1560,9 +1757,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		depth_desc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
 		depth_desc.BackFace = depth_desc.FrontFace;
 		ComPtr<ID3D11DepthStencilState> depth_state;
-		if (FAILED(impl_->device->CreateDepthStencilState(&depth_desc, depth_state.GetAddressOf())))
-			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
-									 "depth-stencil-state creation failed");
+		CheckD3DResult(impl_->device.Get(), impl_->device->CreateDepthStencilState(
+			&depth_desc, depth_state.GetAddressOf()), "depth-stencil-state creation failed");
 
 		std::vector<ComPtr<ID3D11Buffer>> constant_buffers;
 		std::unordered_map<std::string, std::uint32_t> constant_buffer_indices;

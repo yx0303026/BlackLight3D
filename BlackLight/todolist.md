@@ -63,11 +63,11 @@ BlackLight 当前是“渲染设备宿主 + 少量运行时服务”的骨架：
 
 ### 1.2 后端一致性
 
-- [ ] **D3D11 窗口缩放**：处理 `WM_SIZE`，释放 RTV 并 `ResizeBuffers`，重建 RTV/深度缓冲 — ★☆☆（1d）
-- [ ] **D3D11 输入转发**：键鼠、滚轮、失焦清空，行为与 OpenGL 后端一致 — ★☆☆（1d）
-- [ ] **D3D11 深度缓冲与 viewport**：创建 D24S8 深度模板，`BeginFrame` 设置 viewport — ★☆☆（1d）
-- [ ] **D3D11 RmlUi 适配**：接入 RmlUi D3D11 渲染器，删掉 `RenderUi` 空实现 — ★★☆（3–5d）
-- [ ] **设备丢失处理**：DXGI `DEVICE_REMOVED`/`RESET` 与 OpenGL 上下文丢失的恢复路径 — ★★★（1 周）
+- [x] **D3D11 窗口缩放**：处理 `WM_SIZE`，释放 RTV 并 `ResizeBuffers`，重建 RTV/深度缓冲 — ★☆☆（1d）
+- [x] **D3D11 输入转发**：键鼠、滚轮、失焦清空，行为与 OpenGL 后端一致 — ★☆☆（1d）
+- [x] **D3D11 深度缓冲与 viewport**：创建 D24S8 深度模板，`BeginFrame` 设置 viewport — ★☆☆（1d）
+- [x] **D3D11 RmlUi 适配**：接入 RmlUi D3D11 渲染器，删掉 `RenderUi` 空实现 — ★★☆（3–5d）
+- [x] **设备丢失处理**：DXGI `DEVICE_REMOVED`/`RESET` 与 OpenGL 上下文丢失的恢复路径 — ★★★（1 周）
 
 ### 1.3 2D 立即可用
 

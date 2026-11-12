@@ -65,6 +65,10 @@ namespace BlackLight::Engine
 		virtual void OnRender();
 		/// Releases application resources.
 		virtual void OnShutdown();
+		/// Releases application GPU resources after the device reports a loss.
+		virtual void OnDeviceLost();
+		/// Recreates application GPU resources after the device and UI are restored.
+		virtual void OnDeviceRestored();
 
 	private:
 		/// Stores runtime state outside the public ABI.

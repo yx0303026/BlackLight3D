@@ -5,6 +5,7 @@
 #include "../DeviceImplementation.h"
 #include "../CommandListInternal.h"
 #include "../RenderingResourcesInternal.h"
+#include "../Win32Support.h"
 #include "engine/Logger.h"
 #include "engine/rendering_device/Shader.h"
 #include "OpenGLFunctions.h"
@@ -17,6 +18,7 @@
 #include <gl/GL.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <limits>
 #include <type_traits>
@@ -62,7 +64,24 @@ namespace BlackLight::Engine::Rendering::Detail
 		constexpr GLenum GL_FLOAT_VEC4_VALUE = 0x8B52;
 		constexpr GLenum GL_FLOAT_MAT4_VALUE = 0x8B5C;
 		constexpr GLenum GL_SAMPLER_2D_VALUE = 0x8B5E;
+		constexpr GLenum GL_CURRENT_PROGRAM_VALUE_LOCAL = 0x8B8D;
+		constexpr GLenum GL_VERTEX_ARRAY_BINDING_VALUE_LOCAL = 0x85B5;
+		constexpr GLenum GL_ARRAY_BUFFER_BINDING_VALUE_LOCAL = 0x8894;
+		constexpr GLenum GL_ELEMENT_ARRAY_BUFFER_BINDING_VALUE_LOCAL = 0x8895;
+		constexpr GLenum GL_FRAMEBUFFER_BINDING_VALUE_LOCAL = 0x8CA6;
+		constexpr GLenum GL_NO_ERROR_VALUE_LOCAL = 0;
 		std::atomic<std::uint64_t> g_next_device_id{1};
+
+		/// Resolves an optional WGL or OpenGL extension without accepting sentinel values.
+		template <typename Function>
+		Function FindOpenGLFunction(const char *name) noexcept
+		{
+			PROC address = wglGetProcAddress(name);
+			const auto value = reinterpret_cast<std::uintptr_t>(address);
+			if (value <= 3 || value == static_cast<std::uintptr_t>(-1))
+				address = GetProcAddress(GetModuleHandleW(L"opengl32.dll"), name);
+			return reinterpret_cast<Function>(address);
+		}
 
 		/// Maps the requested texture wrap mode to OpenGL.
 		GLint MapAddressMode(TextureAddressMode mode)
@@ -253,78 +272,18 @@ namespace BlackLight::Engine::Rendering::Detail
 									 std::string(stage) + " shader compilation failed: " + log);
 		}
 
-		/// Queries the window's DPI without requiring a newer Windows loader API.
-		UINT GetWindowDpi(HWND window)
-		{
-			using GetDpiProc = UINT(WINAPI *)(HWND);
-			static const auto get_dpi = reinterpret_cast<GetDpiProc>(
-				GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow"));
-			const UINT dpi = get_dpi ? get_dpi(window) : 0;
-			return dpi ? dpi : USER_DEFAULT_SCREEN_DPI;
-		}
-
-		/// Computes nonclient borders at the DPI of the newly created window.
-		void AdjustClientBounds(RECT &bounds, DWORD style, UINT dpi)
-		{
-			using AdjustBoundsProc = BOOL(WINAPI *)(LPRECT, DWORD, BOOL, DWORD, UINT);
-			static const auto adjust_bounds = reinterpret_cast<AdjustBoundsProc>(
-				GetProcAddress(GetModuleHandleW(L"user32.dll"), "AdjustWindowRectExForDpi"));
-			if (adjust_bounds)
-				adjust_bounds(&bounds, style, FALSE, 0, dpi);
-			else
-				AdjustWindowRectEx(&bounds, style, FALSE, 0);
-		}
-
-		/// Uses the official Win32 services and routes RmlUi diagnostics to the engine.
-		class UiSystemInterface final : public SystemInterface_Win32
+		/// Avoids issuing texture deletion commands into a lost or unrelated GL context.
+		class OpenGLUiRenderer final : public RenderInterface_GL2
 		{
 		public:
-			/// Logs assertions without opening the default RmlUi modal dialog.
-			bool LogMessage(Rml::Log::Type type, const Rml::String &message) override
+			/// Releases a texture only while its owning context is available.
+			void ReleaseTexture(Rml::TextureHandle texture) override
 			{
-				LogLevel level = LogLevel::Info;
-				if (type == Rml::Log::LT_ERROR || type == Rml::Log::LT_ASSERT)
-					level = LogLevel::Error;
-				else if (type == Rml::Log::LT_WARNING)
-					level = LogLevel::Warning;
-				else if (type == Rml::Log::LT_DEBUG)
-					level = LogLevel::Debug;
-				BL_LOG(level, "RmlUi", message);
-				return true;
-			}
-		};
-
-		/// Keeps the process-wide core alive until the last UI device has shut down.
-		class UiRuntime final
-		{
-		public:
-			/// Registers platform services before initializing the core.
-			UiRuntime()
-			{
-				Rml::SetSystemInterface(&system);
-				if (!Rml::Initialise())
-				{
-					Rml::SetSystemInterface(nullptr);
-					throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL", "RmlUi initialization failed");
-				}
-			}
-			/// Shuts down the core before the platform services are destroyed.
-			~UiRuntime() { Rml::Shutdown(); }
-
-			/// Shares a single core between UI devices on the window thread.
-			static std::shared_ptr<UiRuntime> Acquire()
-			{
-				static std::weak_ptr<UiRuntime> active;
-				auto runtime = active.lock();
-				if (!runtime)
-				{
-					runtime = std::make_shared<UiRuntime>();
-					active = runtime;
-				}
-				return runtime;
+				if (gpu_available)
+					RenderInterface_GL2::ReleaseTexture(texture);
 			}
 
-			UiSystemInterface system;
+			bool gpu_available = true;
 		};
 	}
 
@@ -343,7 +302,10 @@ namespace BlackLight::Engine::Rendering::Detail
 				return self.owns_window ? 0 : DefSubclassProc(window, message, wparam, lparam);
 			}
 			if (message == WM_NCDESTROY)
+			{
 				self.close = true;
+				ReleaseWindowInput(self.input);
+			}
 			if (message == WM_DPICHANGED)
 			{
 				if (self.owns_window)
@@ -357,48 +319,10 @@ namespace BlackLight::Engine::Rendering::Detail
 				return DefSubclassProc(window, message, wparam, lparam);
 			}
 
-			if (self.input)
-			{
-				switch (message)
-				{
-				case WM_KEYDOWN:
-				case WM_SYSKEYDOWN:
-					self.input->SetKeyDown(static_cast<std::uint32_t>(wparam), true);
-					break;
-				case WM_KEYUP:
-				case WM_SYSKEYUP:
-					self.input->SetKeyDown(static_cast<std::uint32_t>(wparam), false);
-					break;
-				case WM_MOUSEMOVE:
-					self.input->SetMousePosition({static_cast<float>(GET_X_LPARAM(lparam)), static_cast<float>(GET_Y_LPARAM(lparam))});
-					break;
-				case WM_LBUTTONDOWN:
-				case WM_LBUTTONUP:
-					self.input->SetMouseButtonDown(MouseButton::Left, message == WM_LBUTTONDOWN);
-					break;
-				case WM_RBUTTONDOWN:
-				case WM_RBUTTONUP:
-					self.input->SetMouseButtonDown(MouseButton::Right, message == WM_RBUTTONDOWN);
-					break;
-				case WM_MBUTTONDOWN:
-				case WM_MBUTTONUP:
-					self.input->SetMouseButtonDown(MouseButton::Middle, message == WM_MBUTTONDOWN);
-					break;
-				case WM_MOUSEWHEEL:
-					self.input->AddMouseWheelDelta(static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / WHEEL_DELTA);
-					break;
-				case WM_KILLFOCUS:
-					for (std::uint32_t key = 0; key < 512; ++key)
-						self.input->SetKeyDown(key, false);
-					for (int button = 0; button < static_cast<int>(MouseButton::Count); ++button)
-						self.input->SetMouseButtonDown(static_cast<MouseButton>(button), false);
-					break;
-				default:
-					break;
-				}
-			}
-			if (self.ui_context &&
-				!RmlWin32::WindowProcedure(self.ui_context, *self.ui_input, window, message, wparam, lparam))
+			if (self.ui_runtime)
+				self.ui_runtime->system.SetWindow(window);
+			if (!ForwardWindowInput(self.input, self.ui_context, self.ui_input.get(),
+									window, &self.ui_keys, message, wparam, lparam))
 				return 0;
 			return DefSubclassProc(window, message, wparam, lparam);
 		}
@@ -409,8 +333,10 @@ namespace BlackLight::Engine::Rendering::Detail
 			RECT rectangle{};
 			if (window && GetClientRect(window, &rectangle))
 			{
-				width = static_cast<std::uint32_t>(rectangle.right - rectangle.left);
-				height = static_cast<std::uint32_t>(rectangle.bottom - rectangle.top);
+				width = IsIconic(window) ? 0u :
+					static_cast<std::uint32_t>((std::max)(0L, rectangle.right - rectangle.left));
+				height = IsIconic(window) ? 0u :
+					static_cast<std::uint32_t>((std::max)(0L, rectangle.bottom - rectangle.top));
 			}
 			const UINT current_dpi = GetWindowDpi(window);
 			if (ui_context)
@@ -421,6 +347,118 @@ namespace BlackLight::Engine::Rendering::Detail
 					BL_LOG(LogLevel::Info, "OpenGL", "UI surface: " + std::to_string(width) + "x" + std::to_string(height) + " pixels, DPI " + std::to_string(current_dpi) + ", dp ratio " + std::to_string(ui_context->GetDensityIndependentPixelRatio()));
 			}
 			dpi = current_dpi;
+		}
+
+		/// Makes the owning context current and reports resets as a recoverable failure.
+		void EnsureCurrent(RenderingError unavailable = RenderingError::SubmissionFailed)
+		{
+			if (context_lost)
+				throw RenderingException(RenderingError::DeviceLost, "OpenGL", "OpenGL context was lost");
+			if (!context || !functions_loaded)
+				throw RenderingException(unavailable, "OpenGL", "device is not initialized");
+			if (!wglMakeCurrent(dc, context) || !glGetString(GL_VERSION) ||
+				(get_reset_status && get_reset_status() != GL_NO_ERROR_VALUE_LOCAL))
+			{
+				context_lost = true;
+				throw RenderingException(RenderingError::DeviceLost, "OpenGL",
+										 "WGL context is unavailable or the graphics device was reset");
+			}
+		}
+
+		/// Creates a 3.3 compatibility context, requesting reset notification when supported.
+		void CreateContext()
+		{
+			context = wglCreateContext(dc);
+			if (!context || !wglMakeCurrent(dc, context))
+				throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL",
+										 "WGL bootstrap context creation failed");
+			using CreateContextProc = HGLRC(WINAPI *)(HDC, HGLRC, const int *);
+			using ExtensionsProc = const char *(WINAPI *)(HDC);
+			const auto create = FindOpenGLFunction<CreateContextProc>("wglCreateContextAttribsARB");
+			const auto extensions_proc = FindOpenGLFunction<ExtensionsProc>("wglGetExtensionsStringARB");
+			const char *extensions = extensions_proc ? extensions_proc(dc) : nullptr;
+			const bool robust_supported = extensions &&
+				(" " + std::string(extensions) + " ").find(
+					" WGL_ARB_create_context_robustness ") != std::string::npos;
+			if (!create)
+				throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL",
+										 "WGL_ARB_create_context is required for OpenGL 3.3");
+			const int attributes[] = {
+				kWglContextMajorVersion, 3, kWglContextMinorVersion, 3,
+				kWglContextProfileMask, kWglContextCompatibilityProfile, 0};
+			const int robust_attributes[] = {
+				kWglContextMajorVersion, 3, kWglContextMinorVersion, 3,
+				kWglContextProfileMask, kWglContextCompatibilityProfile,
+				0x2094, 0x0004, // WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB.
+				0x8256, 0x8252, // RESET_NOTIFICATION_STRATEGY_ARB, LOSE_CONTEXT_ON_RESET_ARB.
+				0};
+			wglMakeCurrent(nullptr, nullptr);
+			HGLRC modern = robust_supported ? create(dc, nullptr, robust_attributes) : nullptr;
+			const bool robust = modern != nullptr;
+			if (!modern)
+				modern = create(dc, nullptr, attributes);
+			if (!modern)
+				throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL",
+										 "OpenGL 3.3 compatibility context creation failed");
+			if (!wglMakeCurrent(dc, modern))
+			{
+				wglDeleteContext(modern);
+				throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL",
+										 "OpenGL 3.3 context activation failed");
+			}
+			wglDeleteContext(context);
+			context = modern;
+			functions = {};
+			if (!functions.Load())
+				throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL",
+										 "OpenGL 3.3 entry-point loading failed");
+			get_reset_status = nullptr;
+			if (robust)
+			{
+				get_reset_status = FindOpenGLFunction<ResetStatusProc>("glGetGraphicsResetStatus");
+				if (!get_reset_status)
+					get_reset_status = FindOpenGLFunction<ResetStatusProc>("glGetGraphicsResetStatusARB");
+				if (!get_reset_status)
+					get_reset_status = FindOpenGLFunction<ResetStatusProc>("glGetGraphicsResetStatusKHR");
+			}
+			functions_loaded = true;
+			context_lost = false;
+			capabilities = {};
+			GLint maximum = 0;
+			glGetIntegerv(GL_MAX_TEXTURE_SIZE_VALUE_LOCAL, &maximum);
+			capabilities.max_texture_width = capabilities.max_texture_height =
+				static_cast<std::uint32_t>(maximum > 0 ? maximum : 0);
+			glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS_VALUE_LOCAL, &maximum);
+			capabilities.max_render_targets = static_cast<std::uint32_t>(maximum > 0 ? maximum : 1);
+			glGetIntegerv(GL_MAX_SAMPLES_VALUE_LOCAL, &maximum);
+			capabilities.max_samples = static_cast<std::uint32_t>(maximum > 0 ? maximum : 1);
+			using SwapIntervalProc = BOOL(WINAPI *)(int);
+			if (const auto interval = FindOpenGLFunction<SwapIntervalProc>("wglSwapIntervalEXT"))
+				interval(config.surface.vertical_sync ? 1 : 0);
+			device_id = g_next_device_id.fetch_add(1, std::memory_order_relaxed);
+			lifetime->Activate(true);
+			if (ui_renderer)
+				ui_renderer->gpu_available = true;
+			EnsureCurrent();
+		}
+
+		/// Invalidates old resources without executing GL deletion in an unrelated context.
+		void ReleaseContext() noexcept
+		{
+			const bool current = context && wglMakeCurrent(dc, context);
+			lifetime->Shutdown(current && !context_lost);
+			active_color_target.reset();
+			active_depth_target.reset();
+			current_framebuffer = 0;
+			if (context)
+			{
+				if (current)
+					wglMakeCurrent(nullptr, nullptr);
+				wglDeleteContext(context);
+				context = nullptr;
+			}
+			functions_loaded = false;
+			get_reset_status = nullptr;
 		}
 
 		DeviceConfig config;
@@ -435,8 +473,9 @@ namespace BlackLight::Engine::Rendering::Detail
 		std::uint32_t height = 0;
 		UINT dpi = 0;
 		std::shared_ptr<UiRuntime> ui_runtime;
-		std::unique_ptr<RenderInterface_GL2> ui_renderer;
+		std::unique_ptr<OpenGLUiRenderer> ui_renderer;
 		std::unique_ptr<TextInputMethodEditor_Win32> ui_input;
+		std::array<bool, 256> ui_keys{};
 		Rml::Context *ui_context = nullptr;
 		OpenGLFunctions functions;
 		std::shared_ptr<DeviceLifetime> lifetime = std::make_shared<DeviceLifetime>();
@@ -446,6 +485,9 @@ namespace BlackLight::Engine::Rendering::Detail
 		std::shared_ptr<Texture::Impl> active_color_target;
 		std::shared_ptr<Texture::Impl> active_depth_target;
 		bool functions_loaded = false;
+		bool context_lost = false;
+		using ResetStatusProc = GLenum(APIENTRY *)();
+		ResetStatusProc get_reset_status = nullptr;
 	};
 
 	/// Creates an uninitialized OpenGL device.
@@ -460,20 +502,22 @@ namespace BlackLight::Engine::Rendering::Detail
 	{
 		if (impl_->window)
 			throw RenderingException(RenderingError::InvalidConfiguration, "OpenGL", "device is already initialized");
-		impl_->device_id = g_next_device_id.fetch_add(1, std::memory_order_relaxed);
 		impl_->config = config;
 		impl_->close = false;
 		impl_->input = input;
 		impl_->width = config.surface.width;
 		impl_->height = config.surface.height;
-		if (config.surface.mode == SurfaceMode::AttachWindow)
+		try
 		{
-			impl_->window = reinterpret_cast<HWND>(config.surface.native_window);
-			if (!IsWindow(impl_->window))
-				throw RenderingException(RenderingError::InvalidConfiguration, "OpenGL", "external HWND is invalid");
-		}
-		else
-		{
+			if (config.surface.mode == SurfaceMode::AttachWindow)
+			{
+				impl_->window = reinterpret_cast<HWND>(config.surface.native_window);
+				if (!IsWindow(impl_->window))
+					throw RenderingException(RenderingError::InvalidConfiguration, "OpenGL",
+											 "external HWND is invalid");
+			}
+			else
+			{
 			WNDCLASSW window_class{};
 			window_class.style = CS_OWNDC;
 			window_class.lpfnWndProc = DefWindowProcW;
@@ -493,12 +537,12 @@ namespace BlackLight::Engine::Rendering::Detail
 			AdjustClientBounds(bounds, style, GetWindowDpi(impl_->window));
 			SetWindowPos(impl_->window, nullptr, 0, 0, bounds.right - bounds.left, bounds.bottom - bounds.top,
 						 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-		}
+			}
 
-		if (!SetWindowSubclass(impl_->window, Impl::WindowProcedure, reinterpret_cast<UINT_PTR>(impl_.get()),
+			if (!SetWindowSubclass(impl_->window, Impl::WindowProcedure, reinterpret_cast<UINT_PTR>(impl_.get()),
 							   reinterpret_cast<DWORD_PTR>(impl_.get())))
-			throw RenderingException(RenderingError::WindowCreationFailed, "OpenGL", "window input handler setup failed");
-		impl_->subclassed = true;
+				throw RenderingException(RenderingError::WindowCreationFailed, "OpenGL", "window input handler setup failed");
+			impl_->subclassed = true;
 
 		impl_->dc = GetDC(impl_->window);
 		if (!impl_->dc)
@@ -516,61 +560,18 @@ namespace BlackLight::Engine::Rendering::Detail
 		const int pixel_format = ChoosePixelFormat(impl_->dc, &descriptor);
 		if (!pixel_format || !SetPixelFormat(impl_->dc, pixel_format, &descriptor))
 			throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL", "pixel format setup failed");
-		impl_->context = wglCreateContext(impl_->dc);
-		if (!impl_->context || !wglMakeCurrent(impl_->dc, impl_->context))
-			throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL", "WGL context creation failed");
-		using CreateContextAttribsProc = HGLRC(WINAPI *)(HDC, HGLRC, const int *);
-		const PROC create_context_address = wglGetProcAddress("wglCreateContextAttribsARB");
-		const auto create_context_value = reinterpret_cast<std::uintptr_t>(create_context_address);
-		if (create_context_value <= 3 || create_context_value == static_cast<std::uintptr_t>(-1))
-			throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL",
-									 "WGL_ARB_create_context is required for OpenGL 3.3");
-		const int context_attributes[] = {
-			kWglContextMajorVersion, 3,
-			kWglContextMinorVersion, 3,
-			kWglContextProfileMask, kWglContextCompatibilityProfile,
-			0};
-		const HGLRC bootstrap_context = impl_->context;
-		wglMakeCurrent(nullptr, nullptr);
-		impl_->context = reinterpret_cast<CreateContextAttribsProc>(create_context_address)(
-			impl_->dc, nullptr, context_attributes);
-		if (!impl_->context || !wglMakeCurrent(impl_->dc, impl_->context))
-		{
-			impl_->context = bootstrap_context;
-			wglMakeCurrent(impl_->dc, impl_->context);
-			wglDeleteContext(bootstrap_context);
-			impl_->context = nullptr;
-			throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL",
-									 "OpenGL 3.3 compatibility context creation failed");
-		}
-		wglDeleteContext(bootstrap_context);
-		if (!impl_->functions.Load())
-			throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL", "OpenGL 3.3 entry-point loading failed");
-		impl_->functions_loaded = true;
-		impl_->lifetime->Activate(true);
-		GLint maximum = 0;
-		glGetIntegerv(GL_MAX_TEXTURE_SIZE_VALUE_LOCAL, &maximum);
-		impl_->capabilities.max_texture_width = impl_->capabilities.max_texture_height =
-			static_cast<std::uint32_t>(maximum > 0 ? maximum : 0);
-		glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS_VALUE_LOCAL, &maximum);
-		impl_->capabilities.max_render_targets = static_cast<std::uint32_t>(maximum > 0 ? maximum : 1);
-		glGetIntegerv(GL_MAX_SAMPLES_VALUE_LOCAL, &maximum);
-		impl_->capabilities.max_samples = static_cast<std::uint32_t>(maximum > 0 ? maximum : 1);
-		impl_->capabilities.storage_buffers = false;
-		using SwapIntervalProc = BOOL(WINAPI *)(int);
-		const PROC swap_interval = wglGetProcAddress("wglSwapIntervalEXT");
-		const auto swap_interval_address = reinterpret_cast<std::uintptr_t>(swap_interval);
-		if (swap_interval_address > 3 && swap_interval_address != static_cast<std::uintptr_t>(-1))
-			reinterpret_cast<SwapIntervalProc>(swap_interval)(config.surface.vertical_sync ? 1 : 0);
-		RECT client{};
-		GetClientRect(impl_->window, &client);
-		impl_->width = static_cast<std::uint32_t>(client.right);
-		impl_->height = static_cast<std::uint32_t>(client.bottom);
+			impl_->CreateContext();
+			RECT client{};
+			GetClientRect(impl_->window, &client);
+			impl_->width = IsIconic(impl_->window) ? 0u :
+				static_cast<std::uint32_t>((std::max)(0L, client.right - client.left));
+			impl_->height = IsIconic(impl_->window) ? 0u :
+				static_cast<std::uint32_t>((std::max)(0L, client.bottom - client.top));
 		if (config.enable_ui)
 		{
-			impl_->ui_renderer = std::make_unique<RenderInterface_GL2>();
+			impl_->ui_renderer = std::make_unique<OpenGLUiRenderer>();
 			impl_->ui_input = std::make_unique<TextInputMethodEditor_Win32>();
-			impl_->ui_runtime = UiRuntime::Acquire();
+			impl_->ui_runtime = UiRuntime::Acquire("OpenGL");
 			impl_->ui_runtime->system.SetWindow(impl_->window);
 			const std::string name = "blacklight-" + std::to_string(reinterpret_cast<std::uintptr_t>(impl_.get()));
 			impl_->ui_context = Rml::CreateContext(name,
@@ -579,12 +580,21 @@ namespace BlackLight::Engine::Rendering::Detail
 				throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL", "RmlUi context creation failed");
 		}
 		impl_->SynchronizeSurface();
-		ShowWindow(impl_->window, SW_SHOW);
+			if (impl_->owns_window)
+				ShowWindow(impl_->window, SW_SHOW);
+		}
+		catch (...)
+		{
+			Shutdown();
+			throw;
+		}
 	}
 
 	/// Pumps Win32 events and updates drawable dimensions.
 	bool OpenGLDevice::ProcessEvents()
 	{
+		if (impl_->close)
+			return false;
 		if (impl_->ui_runtime)
 			impl_->ui_runtime->system.SetWindow(impl_->window);
 		MSG message{};
@@ -596,6 +606,9 @@ namespace BlackLight::Engine::Rendering::Detail
 			DispatchMessageW(&message);
 		}
 		impl_->SynchronizeSurface();
+		impl_->EnsureCurrent();
+		if (!impl_->width || !impl_->height)
+			MsgWaitForMultipleObjectsEx(0, nullptr, 16, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
 		if (impl_->lifetime)
 			impl_->lifetime->Flush();
 		return !impl_->close;
@@ -604,23 +617,24 @@ namespace BlackLight::Engine::Rendering::Detail
 	/// Clears the default color and depth buffers.
 	void OpenGLDevice::BeginFrame()
 	{
-		if (!impl_->context || !wglMakeCurrent(impl_->dc, impl_->context))
-			throw RenderingException(RenderingError::SubmissionFailed, "OpenGL", "context is not current");
+		impl_->EnsureCurrent();
 		impl_->active_color_target.reset();
 		impl_->active_depth_target.reset();
 		impl_->current_framebuffer = 0;
 		impl_->functions.BindFramebuffer(GL_FRAMEBUFFER_VALUE, 0);
+		if (!impl_->width || !impl_->height)
+			return;
 		glViewport(0, 0, static_cast<GLsizei>(impl_->width), static_cast<GLsizei>(impl_->height));
 		glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 		glClearStencil(0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+		impl_->EnsureCurrent();
 	}
 
 	/// Binds and clears a texture framebuffer for off-screen rendering.
 	void OpenGLDevice::BeginFrame(const Texture *color_target, const Texture *depth_target)
 	{
-		if (!impl_->context || !wglMakeCurrent(impl_->dc, impl_->context))
-			throw RenderingException(RenderingError::SubmissionFailed, "OpenGL", "context is not current");
+		impl_->EnsureCurrent();
 		if (!color_target && !depth_target)
 		{
 			impl_->functions.BindFramebuffer(GL_FRAMEBUFFER_VALUE, 0);
@@ -672,11 +686,27 @@ namespace BlackLight::Engine::Rendering::Detail
 	{
 		if (!impl_->ui_context || impl_->close || !impl_->width || !impl_->height)
 			return;
+		impl_->EnsureCurrent();
 		impl_->ui_context->Update();
 		GLint matrix_mode = GL_MODELVIEW;
+		GLint current_program = 0;
+		GLint framebuffer = 0;
+		GLint vertex_array = 0;
+		GLint array_buffer = 0;
+		GLint element_buffer = 0;
 		glGetIntegerv(GL_MATRIX_MODE, &matrix_mode);
+		glGetIntegerv(GL_CURRENT_PROGRAM_VALUE_LOCAL, &current_program);
+		glGetIntegerv(GL_FRAMEBUFFER_BINDING_VALUE_LOCAL, &framebuffer);
+		glGetIntegerv(GL_VERTEX_ARRAY_BINDING_VALUE_LOCAL, &vertex_array);
+		glGetIntegerv(GL_ARRAY_BUFFER_BINDING_VALUE_LOCAL, &array_buffer);
+		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING_VALUE_LOCAL, &element_buffer);
 		glPushAttrib(GL_ALL_ATTRIB_BITS);
 		glPushClientAttrib(GL_CLIENT_ALL_ATTRIB_BITS);
+		impl_->functions.BindFramebuffer(GL_FRAMEBUFFER_VALUE, 0);
+		impl_->functions.UseProgram(0);
+		impl_->functions.BindVertexArray(0);
+		impl_->functions.BindBuffer(GL_ARRAY_BUFFER_VALUE, 0);
+		impl_->functions.BindBuffer(GL_ELEMENT_ARRAY_BUFFER_VALUE, 0);
 		for (const GLenum mode : {GL_PROJECTION, GL_TEXTURE, GL_MODELVIEW})
 		{
 			glMatrixMode(mode);
@@ -688,7 +718,28 @@ namespace BlackLight::Engine::Rendering::Detail
 		glDisable(GL_FOG);
 		impl_->ui_renderer->SetViewport(static_cast<int>(impl_->width), static_cast<int>(impl_->height));
 		impl_->ui_renderer->BeginFrame();
-		impl_->ui_context->Render();
+		try
+		{
+			impl_->ui_context->Render();
+		}
+		catch (...)
+		{
+			impl_->ui_renderer->EndFrame();
+			for (const GLenum mode : {GL_MODELVIEW, GL_TEXTURE, GL_PROJECTION})
+			{
+				glMatrixMode(mode);
+				glPopMatrix();
+			}
+			glPopClientAttrib();
+			glPopAttrib();
+			impl_->functions.BindVertexArray(static_cast<GLuint>(vertex_array));
+			impl_->functions.BindBuffer(GL_ARRAY_BUFFER_VALUE, static_cast<GLuint>(array_buffer));
+			impl_->functions.BindBuffer(GL_ELEMENT_ARRAY_BUFFER_VALUE, static_cast<GLuint>(element_buffer));
+			impl_->functions.UseProgram(static_cast<GLuint>(current_program));
+			impl_->functions.BindFramebuffer(GL_FRAMEBUFFER_VALUE, static_cast<GLuint>(framebuffer));
+			glMatrixMode(matrix_mode);
+			throw;
+		}
 		impl_->ui_renderer->EndFrame();
 		for (const GLenum mode : {GL_MODELVIEW, GL_TEXTURE, GL_PROJECTION})
 		{
@@ -697,30 +748,89 @@ namespace BlackLight::Engine::Rendering::Detail
 		}
 		glPopClientAttrib();
 		glPopAttrib();
+		impl_->functions.BindVertexArray(static_cast<GLuint>(vertex_array));
+		impl_->functions.BindBuffer(GL_ARRAY_BUFFER_VALUE, static_cast<GLuint>(array_buffer));
+		impl_->functions.BindBuffer(GL_ELEMENT_ARRAY_BUFFER_VALUE, static_cast<GLuint>(element_buffer));
+		impl_->functions.UseProgram(static_cast<GLuint>(current_program));
+		impl_->functions.BindFramebuffer(GL_FRAMEBUFFER_VALUE, static_cast<GLuint>(framebuffer));
 		glMatrixMode(matrix_mode);
 	}
 	/// Presents the WGL double-buffered drawable.
 	void OpenGLDevice::Present()
 	{
+		impl_->EnsureCurrent(RenderingError::PresentationFailed);
+		if (!impl_->width || !impl_->height)
+			return;
 		if (!impl_->dc || !SwapBuffers(impl_->dc))
+		{
+			impl_->EnsureCurrent(RenderingError::PresentationFailed);
 			throw RenderingException(RenderingError::PresentationFailed, "OpenGL", "SwapBuffers failed");
+		}
+		impl_->EnsureCurrent(RenderingError::PresentationFailed);
 	}
+
+	/// Recreates a lost WGL context while retaining UI documents and the native window.
+	void OpenGLDevice::Recover()
+	{
+		if (!impl_->window || !IsWindow(impl_->window) || impl_->close)
+			throw RenderingException(RenderingError::DeviceRecoveryFailed, "OpenGL",
+									 "recovery requires a live surface");
+		BL_LOG(LogLevel::Warning, "OpenGL", "Recreating the rendering context");
+		ReleaseWindowInput(impl_->input);
+		if (impl_->ui_renderer)
+		{
+			impl_->ui_renderer->gpu_available = false;
+			Rml::ReleaseCompiledGeometry(impl_->ui_renderer.get());
+			Rml::ReleaseTextures(impl_->ui_renderer.get());
+		}
+		impl_->ReleaseContext();
+		try
+		{
+			if (!impl_->dc)
+			{
+				impl_->dc = GetDC(impl_->window);
+				if (!impl_->dc)
+					throw RenderingException(RenderingError::DeviceRecoveryFailed, "OpenGL",
+											 "GetDC failed during recovery");
+			}
+			impl_->CreateContext();
+			if (impl_->ui_context)
+			{
+				impl_->ui_runtime->system.SetWindow(impl_->window);
+				impl_->ui_renderer->SetViewport(static_cast<int>(impl_->width),
+												 static_cast<int>(impl_->height));
+				Rml::ReleaseFontResources();
+			}
+			impl_->SynchronizeSurface();
+			BL_LOG(LogLevel::Info, "OpenGL", "Rendering context restored");
+		}
+		catch (const std::exception &error)
+		{
+			impl_->ReleaseContext();
+			throw RenderingException(RenderingError::DeviceRecoveryFailed, "OpenGL", error.what());
+		}
+	}
+
 	/// Releases OpenGL, DC, and owned window resources.
 	void OpenGLDevice::Shutdown() noexcept
 	{
 		if (!impl_)
 			return;
-		if (impl_->context)
+		if (impl_->context && !impl_->context_lost)
 			wglMakeCurrent(impl_->dc, impl_->context);
-		if (impl_->lifetime && impl_->functions_loaded)
-		{
-			impl_->lifetime->Flush();
-			impl_->lifetime->Shutdown();
-		}
 		if (impl_->ui_context)
 		{
 			Rml::RemoveContext(impl_->ui_context->GetName());
 			impl_->ui_context = nullptr;
+		}
+		if (impl_->ui_renderer)
+		{
+			if (impl_->functions_loaded && !impl_->context_lost)
+			{
+				Rml::ReleaseCompiledGeometry(impl_->ui_renderer.get());
+				Rml::ReleaseTextures(impl_->ui_renderer.get());
+			}
+			impl_->ui_renderer->gpu_available = false;
 		}
 		if (impl_->ui_runtime)
 		{
@@ -730,15 +840,10 @@ namespace BlackLight::Engine::Rendering::Detail
 		}
 		impl_->ui_input.reset();
 		impl_->ui_renderer.reset();
+		impl_->ReleaseContext();
 		if (impl_->subclassed && IsWindow(impl_->window))
 			RemoveWindowSubclass(impl_->window, Impl::WindowProcedure, reinterpret_cast<UINT_PTR>(impl_.get()));
 		impl_->subclassed = false;
-		if (impl_->context)
-		{
-			wglMakeCurrent(nullptr, nullptr);
-			wglDeleteContext(impl_->context);
-			impl_->context = nullptr;
-		}
 		if (impl_->dc && impl_->window)
 		{
 			ReleaseDC(impl_->window, impl_->dc);
@@ -749,7 +854,9 @@ namespace BlackLight::Engine::Rendering::Detail
 		impl_->window = nullptr;
 		impl_->owns_window = false;
 		impl_->dpi = 0;
-		impl_->functions_loaded = false;
+		impl_->context_lost = false;
+		impl_->width = impl_->height = 0;
+		impl_->input = nullptr;
 	}
 	/// Returns the current surface state.
 	SurfaceState OpenGLDevice::GetSurfaceState() const noexcept
@@ -781,8 +888,7 @@ namespace BlackLight::Engine::Rendering::Detail
 	/// Executes recorded normalized commands in their original order.
 	void OpenGLDevice::Submit(CommandList &commands)
 	{
-		if (!impl_->context || !impl_->functions_loaded || !wglMakeCurrent(impl_->dc, impl_->context))
-			throw RenderingException(RenderingError::SubmissionFailed, "OpenGL", "OpenGL context is not current");
+		impl_->EnsureCurrent();
 		if (!commands.impl_)
 			throw RenderingException(RenderingError::SubmissionFailed, "OpenGL", "command list was moved from");
 
@@ -1047,8 +1153,7 @@ namespace BlackLight::Engine::Rendering::Detail
 	/// Creates an OpenGL buffer with checked size, usage, and ownership metadata.
 	Buffer OpenGLDevice::CreateBuffer(const BufferDesc &description)
 	{
-		if (!impl_->functions_loaded || !impl_->context || !wglMakeCurrent(impl_->dc, impl_->context))
-			throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "OpenGL context is not current");
+		impl_->EnsureCurrent(RenderingError::ResourceCreationFailed);
 		if (description.size == 0 || description.size > static_cast<std::size_t>(std::numeric_limits<GLSizePtr>::max()))
 			throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "buffer size is invalid or too large");
 		if (description.usage == BufferUsage::Constant && description.size % 16 != 0)
@@ -1094,8 +1199,7 @@ namespace BlackLight::Engine::Rendering::Detail
 	/// Creates a sampled two-dimensional texture and sampler state.
 	Texture OpenGLDevice::CreateTexture(const TextureDesc &description)
 	{
-		if (!impl_->functions_loaded || !impl_->context || !wglMakeCurrent(impl_->dc, impl_->context))
-			throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "OpenGL context is not current");
+		impl_->EnsureCurrent(RenderingError::ResourceCreationFailed);
 		if (!description.width || !description.height || !description.mip_levels)
 			throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "texture dimensions and mip count must be non-zero");
 		std::uint32_t maximum_mip_levels = 1;
@@ -1261,8 +1365,7 @@ namespace BlackLight::Engine::Rendering::Detail
 	/// Resolves a multisampled color target into a single-sample render target.
 	void OpenGLDevice::ResolveTexture(const Texture &source, const Texture &destination)
 	{
-		if (!impl_->functions_loaded || !impl_->context || !wglMakeCurrent(impl_->dc, impl_->context))
-			throw RenderingException(RenderingError::SubmissionFailed, "OpenGL", "OpenGL context is not current");
+		impl_->EnsureCurrent(RenderingError::SubmissionFailed);
 		const auto *source_impl = source.impl_.get();
 		const auto *destination_impl = destination.impl_.get();
 		if (!source_impl || !destination_impl)
@@ -1301,13 +1404,13 @@ namespace BlackLight::Engine::Rendering::Detail
 		if (srgb_enabled)
 			glEnable(GL_FRAMEBUFFER_SRGB_VALUE_LOCAL);
 		impl_->functions.BindFramebuffer(GL_FRAMEBUFFER_VALUE, impl_->current_framebuffer);
+		impl_->EnsureCurrent(RenderingError::SubmissionFailed);
 	}
 
 	/// Compiles a backend GLSL program and creates its input vertex array.
 	GraphicsPipeline OpenGLDevice::CreateGraphicsPipeline(const GraphicsPipelineDesc &description)
 	{
-		if (!impl_->functions_loaded || !impl_->context || !wglMakeCurrent(impl_->dc, impl_->context))
-			throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "OpenGL context is not current");
+		impl_->EnsureCurrent(RenderingError::ResourceCreationFailed);
 		if (description.vertex_attribute_count && !description.vertex_attributes)
 			throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "vertex attributes pointer is null");
 		if (!description.vertex_stride && description.vertex_attribute_count)

@@ -84,7 +84,9 @@ namespace BlackLight::Engine
 			UnsupportedOperation,
 			ResourceCreationFailed,
 			SubmissionFailed,
-			PresentationFailed
+			PresentationFailed,
+			DeviceLost,
+			DeviceRecoveryFailed
 		};
 
 		/// Reports a rendering failure with a stable error code and backend identity.
@@ -158,6 +160,9 @@ namespace BlackLight::Engine
 			virtual void ResolveTexture(const Texture &source, const Texture &destination) = 0;
 			/// Creates a backend graphics pipeline.
 			virtual GraphicsPipeline CreateGraphicsPipeline(const GraphicsPipelineDesc &description) = 0;
+			/// Recreates a lost device on the same window, retaining the UI context.
+			/// Invalidates all existing GPU resources; applications must recreate them.
+			virtual void Recover();
 
 			/// Creates a platform implementation from the supplied configuration.
 			static std::unique_ptr<RenderingDevice> Create(const DeviceConfig &config);

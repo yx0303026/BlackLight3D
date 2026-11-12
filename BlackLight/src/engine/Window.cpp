@@ -76,16 +76,32 @@ namespace BlackLight::Engine
 		{
 			while (!impl_->exit_requested && !impl_->device->GetSurfaceState().should_close)
 			{
-				impl_->input.BeginFrame();
-				if (!impl_->device->ProcessEvents())
-					break;
-				OnUpdate();
-				if (impl_->exit_requested)
-					break;
-				impl_->device->BeginFrame();
-				OnRender();
-				impl_->device->RenderUi();
-				impl_->device->Present();
+				try
+				{
+					impl_->input.BeginFrame();
+					if (!impl_->device->ProcessEvents())
+						break;
+					OnUpdate();
+					if (impl_->exit_requested)
+						break;
+					const auto surface = impl_->device->GetSurfaceState();
+					if (!surface.width || !surface.height)
+						continue;
+					impl_->device->BeginFrame();
+					OnRender();
+					impl_->device->RenderUi();
+					impl_->device->Present();
+				}
+				catch (const Rendering::RenderingException &error)
+				{
+					if (error.GetCode() != Rendering::RenderingError::DeviceLost)
+						throw;
+					if (impl_->exit_requested || impl_->device->GetSurfaceState().should_close)
+						break;
+					OnDeviceLost();
+					impl_->device->Recover();
+					OnDeviceRestored();
+				}
 			}
 		}
 		catch (...)
@@ -152,4 +168,8 @@ namespace BlackLight::Engine
 	void Window::OnRender() {}
 	/// Provides an optional shutdown hook.
 	void Window::OnShutdown() {}
+	/// Provides an optional application GPU-resource release hook.
+	void Window::OnDeviceLost() {}
+	/// Provides an optional application GPU-resource recreation hook.
+	void Window::OnDeviceRestored() {}
 }

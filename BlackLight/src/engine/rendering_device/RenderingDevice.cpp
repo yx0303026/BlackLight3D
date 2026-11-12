@@ -18,6 +18,13 @@ namespace BlackLight::Engine::Rendering
 	const std::string &RenderingException::GetBackend() const noexcept { return backend_; }
 	/// Releases the polymorphic rendering device.
 	RenderingDevice::~RenderingDevice() = default;
+	/// Rejects recovery when a custom device does not provide a recovery implementation.
+	void RenderingDevice::Recover()
+	{
+		throw RenderingException(RenderingError::DeviceRecoveryFailed, "custom",
+								 "rendering-device recovery is not implemented");
+	}
+
 	/// Creates and initializes a backend device.
 	std::unique_ptr<RenderingDevice> RenderingDevice::Create(const DeviceConfig &config)
 	{
