@@ -121,7 +121,11 @@ set(BLACKLIGHT_ENGINE_SOURCES
 )
 
 add_library(blacklight_engine SHARED ${BLACKLIGHT_ENGINE_SOURCES}
-	include/engine/Logger.h)
+	include/engine/Logger.h
+	include/engine/collision/Capsule.h
+	include/engine/collision
+	include/engine/collision/Circle2D.h
+	include/engine/collision/Poly.h)
 add_library(blacklight_engine_static STATIC ${BLACKLIGHT_ENGINE_SOURCES})
 add_library(BlackLight::Engine ALIAS blacklight_engine)
 add_library(BlackLight::EngineStatic ALIAS blacklight_engine_static)

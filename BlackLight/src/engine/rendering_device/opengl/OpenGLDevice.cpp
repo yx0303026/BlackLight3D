@@ -72,6 +72,9 @@ namespace BlackLight::Engine::Rendering::Detail
 		constexpr GLenum GL_ARRAY_BUFFER_BINDING_VALUE_LOCAL = 0x8894;
 		constexpr GLenum GL_ELEMENT_ARRAY_BUFFER_BINDING_VALUE_LOCAL = 0x8895;
 		constexpr GLenum GL_FRAMEBUFFER_BINDING_VALUE_LOCAL = 0x8CA6;
+		constexpr GLenum GL_ACTIVE_TEXTURE_VALUE_LOCAL = 0x84E0;
+		constexpr GLenum GL_CLIENT_ACTIVE_TEXTURE_VALUE_LOCAL = 0x84E1;
+		constexpr GLenum GL_SAMPLER_BINDING_VALUE_LOCAL = 0x8919;
 		constexpr GLenum GL_NO_ERROR_VALUE_LOCAL = 0;
 		std::atomic<std::uint64_t> g_next_device_id{1};
 
@@ -707,19 +710,30 @@ namespace BlackLight::Engine::Rendering::Detail
 		GLint vertex_array = 0;
 		GLint array_buffer = 0;
 		GLint element_buffer = 0;
+		GLint active_texture = 0;
+		GLint client_active_texture = 0;
+		GLint sampler = 0;
 		glGetIntegerv(GL_MATRIX_MODE, &matrix_mode);
 		glGetIntegerv(GL_CURRENT_PROGRAM_VALUE_LOCAL, &current_program);
 		glGetIntegerv(GL_FRAMEBUFFER_BINDING_VALUE_LOCAL, &framebuffer);
 		glGetIntegerv(GL_VERTEX_ARRAY_BINDING_VALUE_LOCAL, &vertex_array);
 		glGetIntegerv(GL_ARRAY_BUFFER_BINDING_VALUE_LOCAL, &array_buffer);
 		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING_VALUE_LOCAL, &element_buffer);
+		glGetIntegerv(GL_ACTIVE_TEXTURE_VALUE_LOCAL, &active_texture);
+		glGetIntegerv(GL_CLIENT_ACTIVE_TEXTURE_VALUE_LOCAL, &client_active_texture);
 		glPushAttrib(GL_ALL_ATTRIB_BITS);
-		glPushClientAttrib(GL_CLIENT_ALL_ATTRIB_BITS);
 		impl_->functions.BindFramebuffer(GL_FRAMEBUFFER_VALUE, 0);
 		impl_->functions.UseProgram(0);
 		impl_->functions.BindVertexArray(0);
+		// Save and restore legacy arrays on the UI VAO, never on the sprite VAO.
+		glPushClientAttrib(GL_CLIENT_ALL_ATTRIB_BITS);
 		impl_->functions.BindBuffer(GL_ARRAY_BUFFER_VALUE, 0);
 		impl_->functions.BindBuffer(GL_ELEMENT_ARRAY_BUFFER_VALUE, 0);
+		impl_->functions.ActiveTexture(GL_TEXTURE0_VALUE);
+		const auto client_active = FindOpenGLFunction<OpenGLFunctions::ActiveTextureProc>("glClientActiveTexture");
+		client_active(GL_TEXTURE0_VALUE);
+		glGetIntegerv(GL_SAMPLER_BINDING_VALUE_LOCAL, &sampler);
+		impl_->functions.BindSampler(0, 0);
 		for (const GLenum mode : {GL_PROJECTION, GL_TEXTURE, GL_MODELVIEW})
 		{
 			glMatrixMode(mode);
@@ -745,6 +759,9 @@ namespace BlackLight::Engine::Rendering::Detail
 			}
 			glPopClientAttrib();
 			glPopAttrib();
+			impl_->functions.BindSampler(0, static_cast<GLuint>(sampler));
+			impl_->functions.ActiveTexture(static_cast<GLenum>(active_texture));
+			client_active(static_cast<GLenum>(client_active_texture));
 			impl_->functions.BindVertexArray(static_cast<GLuint>(vertex_array));
 			impl_->functions.BindBuffer(GL_ARRAY_BUFFER_VALUE, static_cast<GLuint>(array_buffer));
 			impl_->functions.BindBuffer(GL_ELEMENT_ARRAY_BUFFER_VALUE, static_cast<GLuint>(element_buffer));
@@ -761,6 +778,9 @@ namespace BlackLight::Engine::Rendering::Detail
 		}
 		glPopClientAttrib();
 		glPopAttrib();
+		impl_->functions.BindSampler(0, static_cast<GLuint>(sampler));
+		impl_->functions.ActiveTexture(static_cast<GLenum>(active_texture));
+		client_active(static_cast<GLenum>(client_active_texture));
 		impl_->functions.BindVertexArray(static_cast<GLuint>(vertex_array));
 		impl_->functions.BindBuffer(GL_ARRAY_BUFFER_VALUE, static_cast<GLuint>(array_buffer));
 		impl_->functions.BindBuffer(GL_ELEMENT_ARRAY_BUFFER_VALUE, static_cast<GLuint>(element_buffer));
