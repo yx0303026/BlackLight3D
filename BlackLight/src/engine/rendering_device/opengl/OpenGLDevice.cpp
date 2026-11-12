@@ -65,6 +65,9 @@ namespace BlackLight::Engine::Rendering::Detail
 		constexpr GLenum GL_FLOAT_MAT4_VALUE = 0x8B5C;
 		constexpr GLenum GL_SAMPLER_2D_VALUE = 0x8B5E;
 		constexpr GLenum GL_CURRENT_PROGRAM_VALUE_LOCAL = 0x8B8D;
+		constexpr GLenum GL_TIME_ELAPSED_QUERY_VALUE = 0x88BF;
+		constexpr GLenum GL_QUERY_RESULT_VALUE_LOCAL = 0x8866;
+		constexpr GLenum GL_QUERY_RESULT_AVAILABLE_VALUE_LOCAL = 0x8867;
 		constexpr GLenum GL_VERTEX_ARRAY_BINDING_VALUE_LOCAL = 0x85B5;
 		constexpr GLenum GL_ARRAY_BUFFER_BINDING_VALUE_LOCAL = 0x8894;
 		constexpr GLenum GL_ELEMENT_ARRAY_BUFFER_BINDING_VALUE_LOCAL = 0x8895;
@@ -452,6 +455,11 @@ namespace BlackLight::Engine::Rendering::Detail
 			current_framebuffer = 0;
 			if (context)
 			{
+				if (current && !context_lost && (timer_queries[0] || timer_queries[1]))
+					functions.DeleteQueries(2, timer_queries.data());
+				timer_queries = {};
+				timer_query_pending = {};
+				timer_query_active = false;
 				if (current)
 					wglMakeCurrent(nullptr, nullptr);
 				wglDeleteContext(context);
@@ -488,6 +496,11 @@ namespace BlackLight::Engine::Rendering::Detail
 		bool context_lost = false;
 		using ResetStatusProc = GLenum(APIENTRY *)();
 		ResetStatusProc get_reset_status = nullptr;
+		std::array<GLuint, 2> timer_queries{};
+		std::array<bool, 2> timer_query_pending{};
+		std::size_t timer_query_write_index = 0;
+		bool timer_query_active = false;
+		bool timer_query_skipped = false;
 	};
 
 	/// Creates an uninitialized OpenGL device.
@@ -1170,7 +1183,10 @@ namespace BlackLight::Engine::Rendering::Detail
 			throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "glGenBuffers returned zero");
 		impl_->functions.BindBuffer(target, buffer);
 		impl_->functions.BufferData(target, static_cast<GLSizePtr>(description.size),
-									description.initial_data, GL_STATIC_DRAW_VALUE);
+									description.initial_data,
+									description.usage == BufferUsage::DynamicVertex
+										? GL_DYNAMIC_DRAW_VALUE
+										: GL_STATIC_DRAW_VALUE);
 		Buffer result;
 		try
 		{
@@ -1194,6 +1210,94 @@ namespace BlackLight::Engine::Rendering::Detail
 			throw;
 		}
 		return result;
+	}
+
+	/// Updates a checked buffer byte range using the streaming OpenGL path.
+	void OpenGLDevice::UpdateBuffer(Buffer &buffer, std::size_t offset,
+									const void *data, std::size_t size)
+	{
+		impl_->EnsureCurrent(RenderingError::ResourceCreationFailed);
+		if (!buffer.impl_ || buffer.impl_->usage != BufferUsage::DynamicVertex ||
+			buffer.impl_->device_id != impl_->device_id ||
+			buffer.impl_->backend != RenderingBackend::OpenGL ||
+			offset > buffer.impl_->size || size > buffer.impl_->size - offset ||
+			(size && !data) ||
+			size > static_cast<std::size_t>(std::numeric_limits<GLSizePtr>::max()) ||
+			offset > static_cast<std::size_t>(std::numeric_limits<GLSizePtr>::max()))
+			throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL",
+									 "dynamic vertex-buffer update range or owner is invalid");
+		if (!size)
+			return;
+		GLint previous_binding = 0;
+		glGetIntegerv(GL_ARRAY_BUFFER_BINDING_VALUE_LOCAL, &previous_binding);
+		impl_->functions.BindBuffer(GL_ARRAY_BUFFER_VALUE, static_cast<GLuint>(buffer.impl_->native));
+		if (offset == 0)
+			impl_->functions.BufferData(GL_ARRAY_BUFFER_VALUE,
+										static_cast<GLSizePtr>(buffer.impl_->size),
+										nullptr, GL_DYNAMIC_DRAW_VALUE);
+		impl_->functions.BufferSubData(GL_ARRAY_BUFFER_VALUE, static_cast<std::ptrdiff_t>(offset),
+									   static_cast<GLSizePtr>(size), data);
+		impl_->functions.BindBuffer(GL_ARRAY_BUFFER_VALUE, static_cast<GLuint>(previous_binding));
+		impl_->EnsureCurrent(RenderingError::ResourceCreationFailed);
+	}
+
+	/// Starts an available non-blocking OpenGL elapsed-time query.
+	void OpenGLDevice::BeginGpuTimerQuery()
+	{
+		impl_->EnsureCurrent(RenderingError::UnsupportedOperation);
+		if (impl_->timer_query_active)
+			throw RenderingException(RenderingError::SubmissionFailed, "OpenGL",
+									 "a GPU timer query is already active");
+		if (!impl_->timer_queries[0] && !impl_->timer_queries[1])
+			impl_->functions.GenQueries(2, impl_->timer_queries.data());
+		impl_->timer_query_skipped = false;
+		for (std::size_t attempt = 0; attempt < impl_->timer_queries.size(); ++attempt)
+		{
+			const std::size_t index = (impl_->timer_query_write_index + attempt) % impl_->timer_queries.size();
+			if (impl_->timer_queries[index] && !impl_->timer_query_pending[index])
+			{
+				impl_->timer_query_write_index = index;
+				impl_->functions.BeginQuery(GL_TIME_ELAPSED_QUERY_VALUE, impl_->timer_queries[index]);
+				impl_->timer_query_active = true;
+				return;
+			}
+		}
+		impl_->timer_query_skipped = true;
+	}
+
+	/// Ends the active elapsed-time query and makes its result eligible for polling.
+	void OpenGLDevice::EndGpuTimerQuery()
+	{
+		if (!impl_->timer_query_active)
+			return;
+		impl_->functions.EndQuery(GL_TIME_ELAPSED_QUERY_VALUE);
+		impl_->timer_query_pending[impl_->timer_query_write_index] = true;
+		impl_->timer_query_write_index =
+			(impl_->timer_query_write_index + 1) % impl_->timer_queries.size();
+		impl_->timer_query_active = false;
+	}
+
+	/// Returns an available OpenGL duration in milliseconds without stalling.
+	bool OpenGLDevice::TryGetGpuTimeMilliseconds(double &milliseconds)
+	{
+		impl_->EnsureCurrent(RenderingError::UnsupportedOperation);
+		for (std::size_t index = 0; index < impl_->timer_queries.size(); ++index)
+		{
+			if (!impl_->timer_query_pending[index])
+				continue;
+			GLint available = GL_FALSE;
+			impl_->functions.GetQueryObjectiv(
+				impl_->timer_queries[index], GL_QUERY_RESULT_AVAILABLE_VALUE_LOCAL, &available);
+			if (available != GL_TRUE)
+				continue;
+			std::uint64_t elapsed_nanoseconds = 0;
+			impl_->functions.GetQueryObjectui64v(
+				impl_->timer_queries[index], GL_QUERY_RESULT_VALUE_LOCAL, &elapsed_nanoseconds);
+			impl_->timer_query_pending[index] = false;
+			milliseconds = static_cast<double>(elapsed_nanoseconds) / 1000000.0;
+			return true;
+		}
+		return false;
 	}
 
 	/// Creates a sampled two-dimensional texture and sampler state.

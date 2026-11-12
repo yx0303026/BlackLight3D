@@ -63,7 +63,8 @@ namespace BlackLight::Engine::Rendering
 		Vertex,
 		Index,
 		Constant,
-		Storage
+		Storage,
+		DynamicVertex
 	};
 
 	/// Describes a buffer allocation and its initial bytes.

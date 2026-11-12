@@ -153,8 +153,17 @@ namespace BlackLight::Engine
 			virtual void Submit(CommandList &commands) = 0;
 			/// Creates a backend buffer using the normalized description.
 			virtual Buffer CreateBuffer(const BufferDesc &description) = 0;
+			/// Replaces a byte range in a device buffer using the backend's update path.
+			virtual void UpdateBuffer(Buffer &buffer, std::size_t offset,
+									  const void *data, std::size_t size) = 0;
 			/// Creates a backend texture using the normalized description.
 			virtual Texture CreateTexture(const TextureDesc &description) = 0;
+			/// Starts the device's non-blocking GPU elapsed-time query.
+			virtual void BeginGpuTimerQuery() = 0;
+			/// Ends the active GPU elapsed-time query.
+			virtual void EndGpuTimerQuery() = 0;
+			/// Reads the latest completed GPU duration without waiting for the GPU.
+			virtual bool TryGetGpuTimeMilliseconds(double &milliseconds) = 0;
 			/// Resolves a multisampled color render target into a single-sample
 			/// render target with matching format and dimensions.
 			virtual void ResolveTexture(const Texture &source, const Texture &destination) = 0;

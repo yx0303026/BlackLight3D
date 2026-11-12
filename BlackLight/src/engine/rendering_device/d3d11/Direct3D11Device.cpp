@@ -565,6 +565,14 @@ namespace BlackLight::Engine::Rendering::Detail
 			depth_view.Reset();
 			depth_texture.Reset();
 			swap_chain.Reset();
+			for (auto &query : timer_starts)
+				query.Reset();
+			for (auto &query : timer_ends)
+				query.Reset();
+			for (auto &query : timer_disjoint)
+				query.Reset();
+			timer_query_pending = {};
+			timer_query_active = false;
 			if (context)
 				context->Flush();
 			context.Reset();
@@ -600,6 +608,13 @@ namespace BlackLight::Engine::Rendering::Detail
 		std::unique_ptr<TextInputMethodEditor_Win32> ui_input;
 		std::array<bool, 256> ui_keys{};
 		Rml::Context *ui_context = nullptr;
+		std::array<ComPtr<ID3D11Query>, 2> timer_starts;
+		std::array<ComPtr<ID3D11Query>, 2> timer_ends;
+		std::array<ComPtr<ID3D11Query>, 2> timer_disjoint;
+		std::array<bool, 2> timer_query_pending{};
+		std::size_t timer_query_write_index = 0;
+		bool timer_query_active = false;
+		bool timer_query_skipped = false;
 	};
 
 	/// Creates an uninitialized D3D11 device.
@@ -1280,10 +1295,15 @@ namespace BlackLight::Engine::Rendering::Detail
 
 		D3D11_BUFFER_DESC native_desc{};
 		native_desc.ByteWidth = static_cast<UINT>(description.size);
-		native_desc.Usage = D3D11_USAGE_DEFAULT;
+		native_desc.Usage = description.usage == BufferUsage::DynamicVertex
+								? D3D11_USAGE_DYNAMIC
+								: D3D11_USAGE_DEFAULT;
+		if (description.usage == BufferUsage::DynamicVertex)
+			native_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 		switch (description.usage)
 		{
 		case BufferUsage::Vertex:
+		case BufferUsage::DynamicVertex:
 			native_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 			break;
 		case BufferUsage::Index:
@@ -1347,9 +1367,127 @@ namespace BlackLight::Engine::Rendering::Detail
 			storage_view.Reset();
 			buffer.Reset();
 		});
+		if (description.usage == BufferUsage::DynamicVertex)
+		{
+			resource->shadow.resize(description.size, 0);
+			if (description.initial_data)
+				std::memcpy(resource->shadow.data(), description.initial_data, description.size);
+		}
 		Buffer result;
 		result.impl_ = std::move(resource);
 		return result;
+	}
+
+	/// Updates a checked dynamic vertex-buffer range using WRITE_DISCARD streaming.
+	void Direct3D11Device::UpdateBuffer(Buffer &buffer, std::size_t offset,
+										const void *data, std::size_t size)
+	{
+		impl_->CheckDevice();
+		if (!buffer.impl_ || !impl_->context ||
+			buffer.impl_->usage != BufferUsage::DynamicVertex ||
+			buffer.impl_->device_id != impl_->device_id ||
+			buffer.impl_->backend != RenderingBackend::Direct3D11 ||
+			offset > buffer.impl_->size || size > buffer.impl_->size - offset ||
+			(size && !data))
+			throw RenderingException(RenderingError::ResourceCreationFailed, "Direct3D11",
+									 "dynamic vertex-buffer update range or owner is invalid");
+		if (!size)
+			return;
+		if (buffer.impl_->shadow.size() != buffer.impl_->size)
+			buffer.impl_->shadow.resize(buffer.impl_->size, 0);
+		std::memcpy(buffer.impl_->shadow.data() + offset, data, size);
+		D3D11_MAPPED_SUBRESOURCE mapped{};
+		auto *native = reinterpret_cast<ID3D11Buffer *>(buffer.impl_->native);
+		CheckD3DResult(impl_->device.Get(), impl_->context->Map(
+			native, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped),
+			"dynamic vertex-buffer mapping failed");
+		std::memcpy(mapped.pData, buffer.impl_->shadow.data(), buffer.impl_->size);
+		impl_->context->Unmap(native, 0);
+		impl_->CheckDevice();
+	}
+
+	/// Starts a timestamp/disjoint query pair when one of two slots is available.
+	void Direct3D11Device::BeginGpuTimerQuery()
+	{
+		impl_->CheckDevice();
+		if (!impl_->context || impl_->timer_query_active)
+			throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
+									 "device is unavailable or a GPU timer query is already active");
+		for (std::size_t index = 0; index < impl_->timer_query_pending.size(); ++index)
+		{
+			if (impl_->timer_starts[index] && impl_->timer_ends[index] && impl_->timer_disjoint[index])
+				continue;
+			D3D11_QUERY_DESC description{};
+			description.Query = D3D11_QUERY_TIMESTAMP;
+			CheckD3DResult(impl_->device.Get(), impl_->device->CreateQuery(
+				&description, impl_->timer_starts[index].GetAddressOf()), "GPU start-timestamp query creation failed");
+			CheckD3DResult(impl_->device.Get(), impl_->device->CreateQuery(
+				&description, impl_->timer_ends[index].GetAddressOf()), "GPU end-timestamp query creation failed");
+			description.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
+			CheckD3DResult(impl_->device.Get(), impl_->device->CreateQuery(
+				&description, impl_->timer_disjoint[index].GetAddressOf()), "GPU disjoint query creation failed");
+		}
+		impl_->timer_query_skipped = false;
+		for (std::size_t attempt = 0; attempt < impl_->timer_query_pending.size(); ++attempt)
+		{
+			const std::size_t index =
+				(impl_->timer_query_write_index + attempt) % impl_->timer_query_pending.size();
+			if (impl_->timer_query_pending[index])
+				continue;
+			impl_->timer_query_write_index = index;
+			impl_->context->Begin(impl_->timer_disjoint[index].Get());
+			impl_->context->End(impl_->timer_starts[index].Get());
+			impl_->timer_query_active = true;
+			return;
+		}
+		impl_->timer_query_skipped = true;
+	}
+
+	/// Ends the active GPU query pair and queues it for non-blocking polling.
+	void Direct3D11Device::EndGpuTimerQuery()
+	{
+		if (!impl_->timer_query_active || !impl_->context)
+			return;
+		const std::size_t index = impl_->timer_query_write_index;
+		impl_->context->End(impl_->timer_ends[index].Get());
+		impl_->context->End(impl_->timer_disjoint[index].Get());
+		impl_->timer_query_pending[index] = true;
+		impl_->timer_query_write_index = (index + 1) % impl_->timer_query_pending.size();
+		impl_->timer_query_active = false;
+	}
+
+	/// Returns any completed, non-disjoint GPU interval without blocking.
+	bool Direct3D11Device::TryGetGpuTimeMilliseconds(double &milliseconds)
+	{
+		impl_->CheckDevice();
+		if (!impl_->context)
+			return false;
+		for (std::size_t index = 0; index < impl_->timer_query_pending.size(); ++index)
+		{
+			if (!impl_->timer_query_pending[index])
+				continue;
+			D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint{};
+			if (impl_->context->GetData(
+					impl_->timer_disjoint[index].Get(), &disjoint, sizeof(disjoint),
+					D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_FALSE)
+				continue;
+			UINT64 start = 0;
+			UINT64 end = 0;
+			if (impl_->context->GetData(
+					impl_->timer_starts[index].Get(), &start, sizeof(start),
+					D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_FALSE ||
+				impl_->context->GetData(
+					impl_->timer_ends[index].Get(), &end, sizeof(end),
+					D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_FALSE)
+				continue;
+			impl_->timer_query_pending[index] = false;
+			if (disjoint.Disjoint || !disjoint.Frequency || end < start)
+				continue;
+			milliseconds = static_cast<double>(end - start) * 1000.0 /
+						   static_cast<double>(disjoint.Frequency);
+			return true;
+		}
+		return false;
 	}
 
 	/// Creates a checked D3D11 2D texture, sampler, and optional RTV or DSV.

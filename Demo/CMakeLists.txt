@@ -33,3 +33,11 @@ blacklight_embed_bui(blacklight_demo
 	NAMESPACE DemoUi
 	FILES Main.bui
 )
+
+add_custom_command(TARGET blacklight_demo POST_BUILD
+	COMMAND "${CMAKE_COMMAND}" -E copy_directory
+		"${CMAKE_CURRENT_SOURCE_DIR}/Content"
+		"$<TARGET_FILE_DIR:blacklight_demo>/Content"
+	COMMENT "Copying platformer content assets"
+	VERBATIM
+)

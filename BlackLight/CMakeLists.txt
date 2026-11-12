@@ -95,13 +95,18 @@ set(BLACKLIGHT_ENGINE_SOURCES
 	src/rmlui/BuiDocument.cpp
 	src/rmlui/BuiLoader.cpp
 	src/rmlui/BuiTree.cpp
+	src/engine/Camera2D.cpp
 	src/engine/Content.cpp
 	src/engine/Ecs.cpp
+	src/engine/FrameStats.cpp
 	src/engine/Game.cpp
+	src/engine/Image.cpp
 	src/engine/Window.cpp
 	src/engine/Input.cpp
 	src/engine/Logger.cpp
 	src/engine/SpriteBatch.cpp
+	src/engine/SpriteAtlas.cpp
+	src/engine/TextRenderer.cpp
 	src/engine/Time.cpp
 	src/engine/rendering_device/RenderingDevice.cpp
 	src/engine/rendering_device/RenderingResources.cpp
@@ -150,11 +155,11 @@ target_include_directories(blacklight_engine_static
 
 target_link_libraries(blacklight_engine
 	PUBLIC RmlUi::Core
-	PRIVATE opengl32 d3d11 dxgi d3dcompiler comctl32
+	PRIVATE opengl32 d3d11 dxgi d3dcompiler comctl32 windowscodecs ole32 gdi32
 )
 target_link_libraries(blacklight_engine_static
 	PUBLIC RmlUi::Core
-	PRIVATE opengl32 d3d11 dxgi d3dcompiler comctl32
+	PRIVATE opengl32 d3d11 dxgi d3dcompiler comctl32 windowscodecs ole32 gdi32
 )
 target_compile_definitions(blacklight_engine PRIVATE BLACKLIGHT_BUILD_SHARED)
 target_compile_definitions(blacklight_engine_static PUBLIC BLACKLIGHT_STATIC)

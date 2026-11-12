@@ -59,6 +59,10 @@ namespace BlackLight::Engine
 		virtual bool OnInitialize() = 0;
 		/// Resets application state before initialization.
 		virtual void OnStarting();
+		/// Starts per-frame metrics before the native event pump.
+		virtual void OnFrameTimingStarted();
+		/// Finishes per-frame metrics after presentation.
+		virtual void OnFrameTimingFinished();
 		/// Updates application state once per frame.
 		virtual void OnUpdate();
 		/// Records application rendering commands.

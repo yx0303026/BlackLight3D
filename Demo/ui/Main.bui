@@ -5,204 +5,162 @@
       display: block;
       width: 100%;
       height: 100%;
-      font-family: Arial;
-      font-size: 12dp;
-      color: #f4f6f8;
       margin: 0;
       padding: 0;
-      background-color: #263746;
+      font-family: Arial;
+      font-size: 15dp;
+      color: #173844;
+      background-color: transparent;
     }
 
-    div {
-      display: block;
-      box-sizing: border-box;
+    div { display: block; box-sizing: border-box; }
+
+    .hud {
+      position: absolute;
+      left: 18dp;
+      top: 18dp;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 10dp;
+      padding: 9dp 12dp;
+      background-color: #f6f3e7;
+      border: 2dp #173844;
+    }
+
+    .hud-title {
+      color: #173844;
+      font-size: 17dp;
+      font-weight: bold;
+      padding-right: 8dp;
+    }
+
+    .hud-value {
+      color: #173844;
+      font-weight: bold;
+      background-color: #f4c66d;
+      padding: 5dp 8dp;
+    }
+
+    .help {
+      position: absolute;
+      right: 18dp;
+      top: 18dp;
+      padding: 8dp 11dp;
+      background-color: #f6f3e7;
+      border: 2dp #173844;
+      color: #173844;
+    }
+
+    .overlay {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: rgba(18, 43, 53, 0.64);
+    }
+
+    .panel {
+      width: 390dp;
+      padding: 28dp;
+      background-color: #f6f3e7;
+      border: 4dp #173844;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .title {
+      color: #173844;
+      font-size: 34dp;
+      font-weight: bold;
+      margin-bottom: 10dp;
+    }
+
+    .subtitle {
+      color: #345963;
+      font-size: 17dp;
+      margin-bottom: 18dp;
+      text-align: center;
     }
 
     button {
       color: #ffffff;
-      background-color: #326b8c;
-      padding: 7dp 12dp;
-      margin: 4dp;
-      cursor: pointer;
-      border-width: 0;
-      border-radius: 3dp;
-    }
-
-    button:hover {
-      background-color: #3f829f;
-    }
-
-    button:active {
-      background-color: #24536e;
-    }
-
-    .main-screen {
-      display: flex;
-      flex-direction: column;
-      width: 100%;
-      height: 100%;
-      gap: 0;
-    }
-
-    .title-panel {
-      display: flex;
-      flex-direction: row;
-      background-color: #1e2c37;
-      padding: 16dp;
-      gap: 12dp;
-      align-items: center;
-      border-bottom: 2dp #3a4a52;
-    }
-
-    .title-text {
-      display: block;
-      font-size: 24dp;
+      background-color: #e3654f;
+      border: 2dp #a8433a;
+      padding: 11dp 24dp;
+      font-size: 17dp;
       font-weight: bold;
-      color: #2ecc71;
-      flex: 1;
-    }
-
-    .content-panel {
-      display: flex;
-      flex-direction: row;
-      flex: 1;
-      gap: 12dp;
-      padding: 12dp;
-      overflow: hidden;
-    }
-
-    .panel-half {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      background-color: #2a3a42;
-      border: 1dp #3a4a52;
-      border-radius: 4dp;
-      padding: 12dp;
-      overflow: hidden;
-    }
-
-    .panel-title {
-      display: block;
-      font-size: 14dp;
-      font-weight: bold;
-      color: #2ecc71;
-      margin-bottom: 8dp;
-      padding-bottom: 8dp;
-      border-bottom: 1dp #3a4a52;
-    }
-
-    .list-box {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      gap: 4dp;
-      overflow-y: auto;
-    }
-
-    .list-item {
-      display: block;
-      padding: 8dp;
-      background-color: #34495e;
-      color: #ecf0f1;
-      border-radius: 2dp;
       cursor: pointer;
     }
 
-    .list-item:hover {
-      background-color: #3f5268;
-      color: #2ecc71;
-    }
+    button:hover { background-color: #f08061; }
+    button:active { background-color: #bd4f45; }
+    .hidden { display: none; }
 
-    .grid-container {
+    .footer {
+      position: absolute;
+      left: 18dp;
+      bottom: 16dp;
       display: flex;
       flex-direction: row;
-      flex-wrap: wrap;
-      flex: 1;
-      gap: 8dp;
-      overflow-y: auto;
+      gap: 9dp;
     }
 
-    .grid-item {
-      display: flex;
-      flex-direction: column;
-      width: 60dp;
-      height: 60dp;
-      background-color: #34495e;
-      border: 1dp #3a4a52;
-      border-radius: 4dp;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-    }
-
-    .grid-item:hover {
-      background-color: #3f5268;
-      border-color: #2ecc71;
-    }
-
-    .status-bar {
-      display: flex;
-      flex-direction: row;
-      background-color: #1e2c37;
-      padding: 8dp 12dp;
-      gap: 12dp;
-      border-top: 1dp #3a4a52;
-      height: 32dp;
-      align-items: center;
-    }
-
-    .status-item {
-      display: block;
-      color: #ecf0f1;
+    .footer-item {
+      background-color: #f6f3e7;
+      border: 2dp #173844;
+      padding: 6dp 9dp;
+      color: #173844;
       font-size: 12dp;
-      flex: 1;
     }
   </styles>
 
   <layout>
-    <div id="main_screen" class="main-screen">
-      <!-- Title Panel -->
-      <div id="title_panel" class="title-panel">
-        <div class="title-text">Welcome to BlackLight3D</div>
-        <button id="start_button">Start</button>
+    <div id="hud" class="hud">
+      <div class="hud-title">CLOUD HOP</div>
+      <div class="hud-value">COINS <span id="score_value">0</span>/7</div>
+      <div class="hud-value">LIVES <span id="lives_value">3</span></div>
+      <div class="hud-value" id="status_value">READY</div>
+    </div>
+    <div class="help">A / D or arrows to move | Space to jump | Esc to pause</div>
+    <div class="footer">
+      <div class="footer-item">FPS <span id="fps_value">0</span></div>
+      <div class="footer-item">CPU <span id="frame_value">0 ms</span></div>
+      <div class="footer-item">GPU <span id="gpu_value">0 ms</span></div>
+      <div class="footer-item">DRAW <span id="draw_value">0</span></div>
+      <div class="footer-item">VERT <span id="vertex_value">0</span></div>
+      <div class="footer-item">SWAP <span id="texture_value">0</span></div>
+    </div>
+    <div id="start_panel" class="overlay">
+      <div class="panel">
+        <div class="title">CLOUD HOP</div>
+        <div class="subtitle">Find the seven sun coins, dodge the coral spikes, and reach the beacon.</div>
+        <button id="start_button">START GAME</button>
       </div>
-
-      <!-- Content Panel -->
-      <div id="content_panel" class="content-panel">
-        <!-- Left Panel: Assets List -->
-        <div id="left_panel" class="panel-half">
-          <div class="panel-title">Assets Library</div>
-          <div id="assets_list" class="list-box">
-            <div class="list-item">Textures</div>
-            <div class="list-item">Models</div>
-            <div class="list-item">Animations</div>
-            <div class="list-item">Shaders</div>
-            <div class="list-item">Sounds</div>
-          </div>
-        </div>
-
-        <!-- Right Panel: Asset Details -->
-        <div id="right_panel" class="panel-half">
-          <div class="panel-title">Asset Details</div>
-          <div id="asset_grid" class="grid-container">
-            <div class="grid-item"><span>T1</span></div>
-            <div class="grid-item"><span>T2</span></div>
-            <div class="grid-item"><span>T3</span></div>
-            <div class="grid-item"><span>T4</span></div>
-            <div class="grid-item"><span>M1</span></div>
-            <div class="grid-item"><span>M2</span></div>
-            <div class="grid-item"><span>M3</span></div>
-            <div class="grid-item"><span>M4</span></div>
-          </div>
-        </div>
+    </div>
+    <div id="pause_panel" class="overlay hidden">
+      <div class="panel">
+        <div class="title">PAUSED</div>
+        <div class="subtitle">Press Escape to keep climbing.</div>
       </div>
-
-      <!-- Status Bar -->
-      <div id="status_bar" class="status-bar">
-        <div class="status-item">Ready</div>
-        <div class="status-item">FPS: 60</div>
-        <div class="status-item">Geometry: 0 tri</div>
+    </div>
+    <div id="game_over_panel" class="overlay hidden">
+      <div class="panel">
+        <div class="title">TRY AGAIN</div>
+        <div class="subtitle">The climb is still yours. Press R or restart below.</div>
+        <button id="retry_button">RESTART</button>
+      </div>
+    </div>
+    <div id="win_panel" class="overlay hidden">
+      <div class="panel">
+        <div class="title">NICE CLIMB!</div>
+        <div class="subtitle">You reached the beacon. Press R to play another round.</div>
+        <button id="play_again_button">PLAY AGAIN</button>
       </div>
     </div>
   </layout>

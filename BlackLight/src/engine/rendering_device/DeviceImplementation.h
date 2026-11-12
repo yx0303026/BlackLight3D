@@ -61,8 +61,16 @@ namespace BlackLight::Engine::Rendering::Detail
 		void Submit(CommandList &commands) override;
 		/// Creates a device buffer.
 		Buffer CreateBuffer(const BufferDesc &description) override;
+		/// Replaces a byte range in a device buffer.
+		void UpdateBuffer(Buffer &buffer, std::size_t offset, const void *data, std::size_t size) override;
 		/// Creates a device texture.
 		Texture CreateTexture(const TextureDesc &description) override;
+		/// Starts a non-blocking GPU duration query.
+		void BeginGpuTimerQuery() override;
+		/// Ends the active GPU duration query.
+		void EndGpuTimerQuery() override;
+		/// Reads the last completed GPU duration without blocking.
+		bool TryGetGpuTimeMilliseconds(double &milliseconds) override;
 		/// Resolves a multisampled color target into a single-sample texture.
 		void ResolveTexture(const Texture &source, const Texture &destination) override;
 		/// Creates a graphics pipeline.
@@ -117,8 +125,16 @@ namespace BlackLight::Engine::Rendering::Detail
 		void Submit(CommandList &commands) override;
 		/// Creates a device buffer.
 		Buffer CreateBuffer(const BufferDesc &description) override;
+		/// Replaces a byte range in a device buffer.
+		void UpdateBuffer(Buffer &buffer, std::size_t offset, const void *data, std::size_t size) override;
 		/// Creates a device texture.
 		Texture CreateTexture(const TextureDesc &description) override;
+		/// Starts a non-blocking GPU duration query.
+		void BeginGpuTimerQuery() override;
+		/// Ends the active GPU duration query.
+		void EndGpuTimerQuery() override;
+		/// Reads the last completed GPU duration without blocking.
+		bool TryGetGpuTimeMilliseconds(double &milliseconds) override;
 		/// Resolves a multisampled color target into a single-sample texture.
 		void ResolveTexture(const Texture &source, const Texture &destination) override;
 		/// Creates a graphics pipeline.

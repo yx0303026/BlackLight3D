@@ -55,7 +55,9 @@ namespace BlackLight::Engine::Rendering
 	/// Records a vertex buffer binding for subsequent draws.
 	void CommandList::SetVertexBuffer(const Buffer &buffer, std::uint32_t stride, std::uint32_t offset)
 	{
-		if (!buffer.impl_ || buffer.impl_->usage != BufferUsage::Vertex || stride == 0 ||
+		if (!buffer.impl_ ||
+			(buffer.impl_->usage != BufferUsage::Vertex && buffer.impl_->usage != BufferUsage::DynamicVertex) ||
+			stride == 0 ||
 			offset > buffer.impl_->size)
 			throw std::invalid_argument("A valid vertex buffer, stride, and offset are required");
 		RequireImpl(impl_).commands.emplace_back(Impl::VertexBufferCommand{buffer.impl_, stride, offset});

@@ -78,6 +78,7 @@ namespace BlackLight::Engine
 			{
 				try
 				{
+					OnFrameTimingStarted();
 					impl_->input.BeginFrame();
 					if (!impl_->device->ProcessEvents())
 						break;
@@ -86,11 +87,25 @@ namespace BlackLight::Engine
 						break;
 					const auto surface = impl_->device->GetSurfaceState();
 					if (!surface.width || !surface.height)
+					{
+						OnFrameTimingFinished();
 						continue;
+					}
 					impl_->device->BeginFrame();
-					OnRender();
-					impl_->device->RenderUi();
+					impl_->device->BeginGpuTimerQuery();
+					try
+					{
+						OnRender();
+						impl_->device->RenderUi();
+					}
+					catch (...)
+					{
+						impl_->device->EndGpuTimerQuery();
+						throw;
+					}
+					impl_->device->EndGpuTimerQuery();
 					impl_->device->Present();
+					OnFrameTimingFinished();
 				}
 				catch (const Rendering::RenderingException &error)
 				{
@@ -162,6 +177,10 @@ namespace BlackLight::Engine
 	}
 	/// Provides an optional initialization hook.
 	void Window::OnStarting() {}
+	/// Provides an optional per-frame timing start hook.
+	void Window::OnFrameTimingStarted() {}
+	/// Provides an optional per-frame timing finish hook.
+	void Window::OnFrameTimingFinished() {}
 	/// Provides an optional update hook.
 	void Window::OnUpdate() {}
 	/// Provides an optional rendering hook.

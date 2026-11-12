@@ -72,6 +72,10 @@ namespace BlackLight::Engine::Rendering::Detail
 	inline constexpr GLenum GL_CLAMP_VALUE = 0x2900;
 	inline constexpr GLenum GL_REPEAT_VALUE = 0x2901;
 	inline constexpr GLenum GL_TEXTURE_COMPARE_MODE_VALUE = 0x884C;
+	inline constexpr GLenum GL_BUFFER_SUB_DATA_VALUE = 0x88E8;
+	inline constexpr GLenum GL_TIME_ELAPSED_VALUE = 0x88BF;
+	inline constexpr GLenum GL_QUERY_RESULT_VALUE = 0x8866;
+	inline constexpr GLenum GL_QUERY_RESULT_AVAILABLE_VALUE = 0x8867;
 
 	/// Loads the OpenGL 3.3 entry points used by normalized resources and draws.
 	struct OpenGLFunctions
@@ -131,6 +135,13 @@ namespace BlackLight::Engine::Rendering::Detail
 		using FramebufferTexture2DProc = void(APIENTRY *)(GLenum, GLenum, GLenum, GLuint, GLint);
 		using CheckFramebufferStatusProc = GLenum(APIENTRY *)(GLenum);
 		using DeleteFramebuffersProc = void(APIENTRY *)(GLsizei, const GLuint *);
+		using BufferSubDataProc = void(APIENTRY *)(GLenum, std::ptrdiff_t, GLSizePtr, const void *);
+		using GenQueriesProc = void(APIENTRY *)(GLsizei, GLuint *);
+		using DeleteQueriesProc = void(APIENTRY *)(GLsizei, const GLuint *);
+		using BeginQueryProc = void(APIENTRY *)(GLenum, GLuint);
+		using EndQueryProc = void(APIENTRY *)(GLenum);
+		using GetQueryObjectivProc = void(APIENTRY *)(GLuint, GLenum, GLint *);
+		using GetQueryObjectui64vProc = void(APIENTRY *)(GLuint, GLenum, std::uint64_t *);
 
 #define BL_GL_FUNCTIONS(X) \
 	X(GenBuffers, glGenBuffers) \
@@ -187,7 +198,14 @@ namespace BlackLight::Engine::Rendering::Detail
 	X(BindFramebuffer, glBindFramebuffer) \
 	X(FramebufferTexture2D, glFramebufferTexture2D) \
 	X(CheckFramebufferStatus, glCheckFramebufferStatus) \
-	X(DeleteFramebuffers, glDeleteFramebuffers)
+	X(DeleteFramebuffers, glDeleteFramebuffers) \
+	X(BufferSubData, glBufferSubData) \
+	X(GenQueries, glGenQueries) \
+	X(DeleteQueries, glDeleteQueries) \
+	X(BeginQuery, glBeginQuery) \
+	X(EndQuery, glEndQuery) \
+	X(GetQueryObjectiv, glGetQueryObjectiv) \
+	X(GetQueryObjectui64v, glGetQueryObjectui64v)
 
 #define BL_DECLARE_GL_FUNCTION(name, symbol) name##Proc name = nullptr;
 		BL_GL_FUNCTIONS(BL_DECLARE_GL_FUNCTION)

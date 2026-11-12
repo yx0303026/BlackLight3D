@@ -2,12 +2,17 @@
 
 /// Convenience include for the host-independent BlackLight engine runtime.
 #include "Content.h"
+#include "Camera2D.h"
 #include "Ecs.h"
+#include "FrameStats.h"
 #include "Game.h"
+#include "Image.h"
 #include "Input.h"
 #include "Logger.h"
 #include "Math.h"
 #include "SpriteBatch.h"
+#include "SpriteAtlas.h"
+#include "TextRenderer.h"
 #include "Time.h"
 #include "Window.h"
 #include "rendering_device/CommandList.h"

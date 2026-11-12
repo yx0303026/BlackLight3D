@@ -2,6 +2,7 @@
 #include "engine/Content.h"
 #include "engine/Ecs.h"
 #include "engine/SpriteBatch.h"
+#include "engine/FrameStats.h"
 
 namespace BlackLight::Engine
 {
@@ -16,6 +17,7 @@ namespace BlackLight::Engine
 		World world;
 		ContentManager content;
 		SpriteBatch sprites;
+		FrameStats stats;
 	};
 
 	/// Builds the desktop host and the additional game runtime.
@@ -31,6 +33,8 @@ namespace BlackLight::Engine
 	ContentManager &Game::GetContent() noexcept { return impl_->content; }
 	/// Returns the game sprite collector.
 	SpriteBatch &Game::GetSpriteBatch() noexcept { return impl_->sprites; }
+	/// Returns the game frame statistics.
+	FrameStats &Game::GetFrameStats() noexcept { return impl_->stats; }
 	/// Provides optional game initialization.
 	bool Game::OnInitialize() { return true; }
 	/// Provides optional variable-rate gameplay.
@@ -39,6 +43,10 @@ namespace BlackLight::Engine
 	void Game::OnFixedUpdate(const GameTime & /*game_time*/) {}
 	/// Resets elapsed time for every successful runtime initialization.
 	void Game::OnStarting() { impl_->clock.Reset(); }
+	/// Starts the CPU frame and clears frame-scoped rendering counters.
+	void Game::OnFrameTimingStarted() { impl_->stats.BeginFrame(); }
+	/// Ends CPU timing after the frame has been presented.
+	void Game::OnFrameTimingFinished() { impl_->stats.EndFrame(); }
 	/// Samples time and dispatches variable and fixed gameplay updates.
 	void Game::OnUpdate()
 	{
@@ -48,5 +56,12 @@ namespace BlackLight::Engine
 			OnFixedUpdate(impl_->clock.GetGameTime());
 	}
 	/// Dispatches game rendering before the host renders UI.
-	void Game::OnRender() { OnRender(impl_->clock.GetGameTime()); }
+	void Game::OnRender()
+	{
+		double gpu_milliseconds = 0.0;
+		if (auto *device = GetRenderingDevice();
+			device && device->TryGetGpuTimeMilliseconds(gpu_milliseconds))
+			impl_->stats.SetGpuFrameMilliseconds(gpu_milliseconds);
+		OnRender(impl_->clock.GetGameTime());
+	}
 }

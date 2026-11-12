@@ -12,6 +12,7 @@ namespace BlackLight::Engine
 	class World;
 	class ContentManager;
 	class SpriteBatch;
+	class FrameStats;
 
 	/// Configures the host-independent game loop.
 	struct GameConfig : WindowConfig
@@ -53,6 +54,8 @@ namespace BlackLight::Engine
 
 		/// Returns the sprite collector; the renderer supplies its submission callback.
 		SpriteBatch &GetSpriteBatch() noexcept;
+		/// Returns frame timing and submission statistics.
+		FrameStats &GetFrameStats() noexcept;
 
 	protected:
 		/// Initializes game-owned content and entities after the backend is ready.
@@ -70,6 +73,10 @@ namespace BlackLight::Engine
 	private:
 		/// Resets game timing before application initialization.
 		void OnStarting() final;
+		/// Starts the game frame metrics before native event polling.
+		void OnFrameTimingStarted() final;
+		/// Finishes game frame metrics after presentation.
+		void OnFrameTimingFinished() final;
 		/// Samples time and dispatches variable and fixed gameplay updates.
 		void OnUpdate() final;
 		/// Dispatches rendering with the current timing snapshot.
