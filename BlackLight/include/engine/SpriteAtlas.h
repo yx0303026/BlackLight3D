@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BlackLightApi.h"
 #include "SpriteBatch.h"
 #include "Image.h"
 
@@ -23,6 +24,8 @@ namespace BlackLight::Engine
 		/// Applies the region's texture and UV range to a sprite command.
 		BLACKLIGHT_API void Apply(SpriteCommand &command) const noexcept;
 	};
+
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_PUSH
 
 	/// Maps named pixel rectangles to normalized regions of one texture.
 	class BLACKLIGHT_API SpriteAtlas final
@@ -51,6 +54,10 @@ namespace BlackLight::Engine
 		class Impl;
 		std::unique_ptr<Impl> impl_;
 	};
+
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_POP
+
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_PUSH
 
 	/// Plays a sequence of atlas regions at a fixed frame duration.
 	class BLACKLIGHT_API SpriteAnimation final
@@ -91,6 +98,8 @@ namespace BlackLight::Engine
 		std::unique_ptr<Impl> impl_;
 	};
 
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_POP
+
 	/// Contains a packed RGBA8 texture image and its named pixel rectangles.
 	struct PackedSpriteAtlas
 	{
@@ -100,6 +109,8 @@ namespace BlackLight::Engine
 		/// Creates sprite UV metadata after the packed image has been uploaded.
 		BLACKLIGHT_API SpriteAtlas CreateAtlas(TextureHandle texture) const;
 	};
+
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_PUSH
 
 	/// Packs named images into rows using a height-first shelf heuristic.
 	class BLACKLIGHT_API SpriteAtlasBuilder final
@@ -128,4 +139,6 @@ namespace BlackLight::Engine
 		class Impl;
 		std::unique_ptr<Impl> impl_;
 	};
+
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_POP
 }

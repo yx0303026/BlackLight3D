@@ -11,6 +11,8 @@
 
 namespace BlackLight::Engine
 {
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_PUSH
+
 	/// Renders ASCII text from a generated bitmap font atlas into a SpriteBatch.
 	class BLACKLIGHT_API TextRenderer final
 	{
@@ -35,4 +37,6 @@ namespace BlackLight::Engine
 		class Impl;
 		std::unique_ptr<Impl> impl_;
 	};
+
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_POP
 }

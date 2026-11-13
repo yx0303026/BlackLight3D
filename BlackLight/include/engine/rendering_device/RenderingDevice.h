@@ -89,6 +89,8 @@ namespace BlackLight::Engine
 			DeviceRecoveryFailed
 		};
 
+		BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_PUSH
+
 		/// Reports a rendering failure with a stable error code and backend identity.
 		class BLACKLIGHT_API RenderingException : public std::runtime_error
 		{
@@ -104,6 +106,8 @@ namespace BlackLight::Engine
 			RenderingError code_;
 			std::string backend_;
 		};
+
+		BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_POP
 
 		/// Describes drawable dimensions and close state for the active surface.
 		struct SurfaceState

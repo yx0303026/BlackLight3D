@@ -33,21 +33,21 @@ namespace BlackLight::UI
 
 		/// Called when the element is attached to the document.
 		/// @param element The RmlUi element being attached
-		virtual void OnElementAttach(Rml::Element* element) {}
+		virtual void OnElementAttach(Rml::Element* element) { (void)element; }
 
 		/// Called when the element is detached from the document.
 		/// @param element The RmlUi element being detached
-		virtual void OnElementDetach(Rml::Element* element) {}
+		virtual void OnElementDetach(Rml::Element* element) { (void)element; }
 
 		/// Called before the element is destroyed.
 		/// Clean up any resources associated with this element here.
 		/// @param element The RmlUi element being destroyed
-		virtual void OnElementDestroy(Rml::Element* element) {}
+		virtual void OnElementDestroy(Rml::Element* element) { (void)element; }
 
 		/// Applies default inline styles to the element.
 		/// Override this to provide custom default styling.
 		/// @param element The element to style
-		virtual void ApplyDefaultStyles(Rml::Element* element) {}
+		virtual void ApplyDefaultStyles(Rml::Element* element) { (void)element; }
 	};
 
 	/// Registry for custom element types.

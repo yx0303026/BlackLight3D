@@ -97,6 +97,8 @@ namespace BlackLight::Engine::Rendering
 		std::uint32_t sample_count = 1;
 	};
 
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_PUSH
+
 	/// Owns one backend buffer and releases it through its device implementation.
 	class BLACKLIGHT_API Buffer final
 	{
@@ -126,6 +128,10 @@ namespace BlackLight::Engine::Rendering
 		friend class Detail::OpenGLDevice;
 		friend class Detail::Direct3D11Device;
 	};
+
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_POP
+
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_PUSH
 
 	/// Owns one backend texture and releases it through its device implementation.
 	class BLACKLIGHT_API Texture final
@@ -160,6 +166,8 @@ namespace BlackLight::Engine::Rendering
 		friend class Detail::OpenGLDevice;
 		friend class Detail::Direct3D11Device;
 	};
+
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_POP
 
 	/// Describes a shader source variant for a specific normalized backend.
 	struct ShaderSource
@@ -200,6 +208,8 @@ namespace BlackLight::Engine::Rendering
 		bool srgb = false;
 	};
 
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_PUSH
+
 	/// Owns a backend graphics pipeline.
 	class BLACKLIGHT_API GraphicsPipeline final
 	{
@@ -228,4 +238,6 @@ namespace BlackLight::Engine::Rendering
 		friend class Detail::Direct3D11Device;
 		friend class Detail::DeviceLifetime;
 	};
+
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_POP
 }

@@ -19,6 +19,8 @@ namespace BlackLight::Engine
 		std::uint64_t texture_switches = 0;
 	};
 
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_PUSH
+
 	/// Accumulates per-frame measurements for a game host.
 	class BLACKLIGHT_API FrameStats final
 	{
@@ -46,4 +48,6 @@ namespace BlackLight::Engine
 		class Impl;
 		std::unique_ptr<Impl> impl_;
 	};
+
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_POP
 }

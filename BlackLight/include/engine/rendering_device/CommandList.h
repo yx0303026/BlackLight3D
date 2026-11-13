@@ -21,6 +21,8 @@ namespace BlackLight::Engine::Rendering
 		float maximum_depth = 1.0f;
 	};
 
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_PUSH
+
 	/// Records normalized resource bindings and draw commands for one frame.
 	class BLACKLIGHT_API CommandList final
 	{
@@ -73,4 +75,6 @@ namespace BlackLight::Engine::Rendering
 		friend class Detail::OpenGLDevice;
 		friend class Detail::Direct3D11Device;
 	};
+
+	BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_POP
 }

@@ -15,13 +15,13 @@
 #define BLACKLIGHT_API
 #endif
 
-/// MSVC reports C4251 for every exported class that stores a standard-library
-/// type. The engine deliberately shares these types with its clients, so the
-/// warning is not actionable; the macros below scope the suppression to the
-/// affected class declarations instead of disabling it for the whole build.
+/// MSVC reports C4251 for exported classes that store standard-library types
+/// and C4275 for exported exceptions derived from the standard library. The
+/// engine deliberately shares these types with its clients, so the warnings
+/// are not actionable; these macros scope suppression to affected declarations.
 #if defined(_MSC_VER)
 #define BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_PUSH \
-	__pragma(warning(push)) __pragma(warning(disable : 4251))
+	__pragma(warning(push)) __pragma(warning(disable : 4251 4275))
 #define BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_POP __pragma(warning(pop))
 #else
 #define BLACKLIGHT_DETAIL_DLL_INTERFACE_WARNING_PUSH
