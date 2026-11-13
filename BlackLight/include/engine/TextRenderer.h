@@ -5,8 +5,8 @@
 #include "rendering_device/RenderingDevice.h"
 #include "rendering_device/RenderingResources.h"
 
-#include <array>
 #include <cstdint>
+#include <memory>
 #include <string_view>
 
 namespace BlackLight::Engine
@@ -24,29 +24,15 @@ namespace BlackLight::Engine
 		TextRenderer(const TextRenderer &) = delete;
 		/// Prevents assigning the font texture and registration.
 		TextRenderer &operator=(const TextRenderer &) = delete;
-		/// Appends glyph quads at the requested screen-space scale and color.
+		/// Appends glyph quads in the active sprite camera's coordinate system.
 		void Draw(SpriteBatch &batch, std::string_view text, Math::Vector2 position,
 				  float scale = 1.0f, Math::Color color = {}) const;
 		/// Returns the line height in pixels before scaling.
 		float GetLineHeight() const noexcept;
 
 	private:
-		struct Glyph
-		{
-			std::uint32_t x = 0;
-			std::uint32_t y = 0;
-			std::uint32_t width = 0;
-			std::uint32_t height = 0;
-			float advance = 0.0f;
-		};
-
-		Rendering::RenderingDevice &device_;
-		SpriteBatchRenderer &renderer_;
-		Rendering::Texture texture_;
-		TextureHandle texture_handle_ = 0;
-		std::array<Glyph, 95> glyphs_{};
-		std::uint32_t atlas_width_ = 0;
-		std::uint32_t atlas_height_ = 0;
-		float line_height_ = 0.0f;
+		/// Keeps glyph layout and platform font resources outside the public ABI.
+		class Impl;
+		std::unique_ptr<Impl> impl_;
 	};
 }

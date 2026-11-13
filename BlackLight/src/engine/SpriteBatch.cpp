@@ -16,11 +16,13 @@
 namespace BlackLight::Engine
 {
 
+	/// Replaces the destination receiving submitted sprite commands.
 	void SpriteBatch::SetSubmitCallback(SubmitCallback callback)
 	{
 		submit_callback_ = std::move(callback);
 	}
 
+	/// Finishes the previous batch and starts collecting a new ordered batch.
 	void SpriteBatch::Begin(SpriteSortMode sort_mode)
 	{
 		if (begun_)
@@ -32,6 +34,7 @@ namespace BlackLight::Engine
 		commands_.clear();
 	}
 
+	/// Collects a sprite or submits it immediately when requested.
 	void SpriteBatch::Draw(const SpriteCommand &command)
 	{
 		if (!begun_)
@@ -49,6 +52,7 @@ namespace BlackLight::Engine
 		commands_.push_back(command);
 	}
 
+	/// Sorts collected sprites and invokes the host's submission callback.
 	void SpriteBatch::End()
 	{
 		if (!begun_)
@@ -64,22 +68,26 @@ namespace BlackLight::Engine
 		begun_ = false;
 	}
 
+	/// Discards queued sprites without issuing a GPU submission.
 	void SpriteBatch::Clear()
 	{
 		commands_.clear();
 		begun_ = false;
 	}
 
+	/// Returns the number of deferred sprites awaiting submission.
 	std::size_t SpriteBatch::GetCommandCount() const noexcept
 	{
 		return commands_.size();
 	}
 
+	/// Reports whether Draw can currently accept sprites.
 	bool SpriteBatch::IsBegun() const noexcept
 	{
 		return begun_;
 	}
 
+	/// Preserves stable ordering within each requested sort key.
 	void SpriteBatch::SortCommands()
 	{
 		switch (sort_mode_)
@@ -113,6 +121,7 @@ namespace BlackLight::Engine
 
 	namespace
 	{
+		/// Stores one interleaved position, UV, and tint for the sprite shaders.
 		struct SpriteVertex
 		{
 			float x;
@@ -180,28 +189,25 @@ float4 main(Input input) : SV_TARGET
 			const float top = -command.origin.y;
 			const float right = command.size.x - command.origin.x;
 			const float bottom = command.size.y - command.origin.y;
-			const std::array<Math::Vector2, 4> corners{{
-				{left, top}, {right, top}, {right, bottom}, {left, bottom}}};
-			const std::array<Math::Vector2, 4> uvs{{
-				command.texture_origin,
-				{command.texture_origin.x + command.texture_size.x, command.texture_origin.y},
-				{command.texture_origin.x + command.texture_size.x,
-				 command.texture_origin.y + command.texture_size.y},
-				{command.texture_origin.x, command.texture_origin.y + command.texture_size.y}}};
+			const std::array<Math::Vector2, 4> corners{{{left, top}, {right, top}, {right, bottom}, {left, bottom}}};
+			const std::array<Math::Vector2, 4> uvs{{command.texture_origin,
+													{command.texture_origin.x + command.texture_size.x, command.texture_origin.y},
+													{command.texture_origin.x + command.texture_size.x,
+													 command.texture_origin.y + command.texture_size.y},
+													{command.texture_origin.x, command.texture_origin.y + command.texture_size.y}}};
 			const std::array<std::size_t, 6> indices{{0, 1, 2, 0, 2, 3}};
 			for (const auto index : indices)
 			{
 				const float x = corners[index].x * command.scale.x;
 				const float y = corners[index].y * command.scale.y;
-				vertices.push_back({
-					command.position.x + x * cosine - y * sine,
-					command.position.y + x * sine + y * cosine,
-					uvs[index].x,
-					uvs[index].y,
-					command.color.r,
-					command.color.g,
-					command.color.b,
-					command.color.a});
+				vertices.push_back({command.position.x + x * cosine - y * sine,
+									command.position.y + x * sine + y * cosine,
+									uvs[index].x,
+									uvs[index].y,
+									command.color.r,
+									command.color.g,
+									command.color.b,
+									command.color.a});
 			}
 		}
 	}
@@ -217,6 +223,7 @@ float4 main(Input input) : SV_TARGET
 		Rendering::Buffer vertices;
 		std::size_t vertex_capacity = 0;
 		TextureHandle next_texture = 1;
+		const Rendering::Texture *last_texture = nullptr;
 		const Camera2D *camera = nullptr;
 		std::unordered_map<TextureHandle, const Rendering::Texture *> textures;
 
@@ -225,7 +232,7 @@ float4 main(Input input) : SV_TARGET
 			: device(owner), stats(frame_stats)
 		{
 			if (!maximum_sprites || maximum_sprites >
-				std::numeric_limits<std::size_t>::max() / (6u * sizeof(SpriteVertex)))
+										std::numeric_limits<std::size_t>::max() / (6u * sizeof(SpriteVertex)))
 				throw std::invalid_argument("Maximum sprite capacity is invalid");
 			vertex_capacity = maximum_sprites * 6u;
 			const std::array<std::uint8_t, 4> white{{255, 255, 255, 255}};
@@ -238,13 +245,12 @@ float4 main(Input input) : SV_TARGET
 			texture_description.magnification_filter = Rendering::TextureFilter::Nearest;
 			white_texture = device.CreateTexture(texture_description);
 
-			const std::array<Rendering::VertexAttribute, 3> attributes{{
-				{0, 2, Rendering::ResourceFormat::RG32Float,
-				 static_cast<std::uint32_t>(offsetof(SpriteVertex, x)), "POSITION", 0},
-				{1, 2, Rendering::ResourceFormat::RG32Float,
-				 static_cast<std::uint32_t>(offsetof(SpriteVertex, u)), "TEXCOORD", 0},
-				{2, 4, Rendering::ResourceFormat::RGBA32Float,
-				 static_cast<std::uint32_t>(offsetof(SpriteVertex, r)), "COLOR", 0}}};
+			const std::array<Rendering::VertexAttribute, 3> attributes{{{0, 2, Rendering::ResourceFormat::RG32Float,
+																		 static_cast<std::uint32_t>(offsetof(SpriteVertex, x)), "POSITION", 0},
+																		{1, 2, Rendering::ResourceFormat::RG32Float,
+																		 static_cast<std::uint32_t>(offsetof(SpriteVertex, u)), "TEXCOORD", 0},
+																		{2, 4, Rendering::ResourceFormat::RGBA32Float,
+																		 static_cast<std::uint32_t>(offsetof(SpriteVertex, r)), "COLOR", 0}}};
 			Rendering::GraphicsPipelineDesc pipeline_description;
 			pipeline_description.vertex_shader = {kSpriteVertexGl, kSpriteVertexHlsl, "main"};
 			pipeline_description.fragment_shader = {kSpritePixelGl, kSpritePixelHlsl, "main"};
@@ -290,6 +296,9 @@ float4 main(Input input) : SV_TARGET
 	/// Forgets a borrowed texture handle.
 	void SpriteBatchRenderer::UnregisterTexture(TextureHandle handle) noexcept
 	{
+		const auto found = impl_->textures.find(handle);
+		if (found != impl_->textures.end() && impl_->last_texture == found->second)
+			impl_->last_texture = nullptr;
 		impl_->textures.erase(handle);
 	}
 	/// Sets the projection source for subsequent sprite submissions.
@@ -350,7 +359,9 @@ float4 main(Input input) : SV_TARGET
 			list.Draw(static_cast<std::uint32_t>(vertex_count));
 			impl_->device.Submit(list);
 			if (impl_->stats)
-				impl_->stats->RecordDraw(vertex_count, first != 0);
+				impl_->stats->RecordDraw(vertex_count,
+										 impl_->last_texture && impl_->last_texture != texture);
+			impl_->last_texture = texture;
 			first = end;
 		}
 	}

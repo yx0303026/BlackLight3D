@@ -36,15 +36,12 @@ namespace BlackLight::Engine
 	/// Builds a row-vector orthographic projection with screen Y increasing downward.
 	Math::Matrix4 Camera2D::GetProjection() const noexcept
 	{
-		Math::Matrix4 result = Math::Matrix4::Identity();
 		if (viewport_.width <= 0.0f || viewport_.height <= 0.0f)
-			return result;
-		const float x_scale = 2.0f * zoom_ / viewport_.width;
-		const float y_scale = -2.0f * zoom_ / viewport_.height;
-		result.m[0][0] = x_scale;
-		result.m[1][1] = y_scale;
-		result.m[3][0] = -position_.x * x_scale;
-		result.m[3][1] = position_.y * -y_scale;
-		return result;
+			return Math::Matrix4::Identity();
+		const float half_width = viewport_.width * 0.5f / zoom_;
+		const float half_height = viewport_.height * 0.5f / zoom_;
+		return Math::Matrix4::CreateOrthographicOffCenter(
+			position_.x - half_width, position_.x + half_width,
+			position_.y + half_height, position_.y - half_height, 0.0f, 1.0f);
 	}
 }

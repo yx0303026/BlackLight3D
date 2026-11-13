@@ -2,7 +2,7 @@
 
 ## 📋 项目概述
 
-BlackLight 当前是“渲染设备宿主 + 少量运行时服务”的骨架：窗口、消息泵、清屏/呈现、输入快照、ECS、内容缓存、日志、固定步长和 RmlUi UI 已可用，但**渲染设备的资源创建与绘制提交全部是 `UnsupportedOperation` 空实现**，SpriteBatch 也还没有 GPU 提交路径。因此现阶段还没有“能画出游戏画面”的完整引擎。
+BlackLight 已完成第一阶段 1.1–1.3：OpenGL / D3D11 资源与命令提交、RmlUi、WIC 图像加载、SpriteBatch GPU 渲染、Camera2D、位图文字、图集与动画、CPU/GPU 帧统计均已接入。`Demo` 已改为使用游戏 UI 系统的平台跳跃小游戏，完成从 PNG 内容加载到可玩画面的闭环。后续重点是输入映射、数学与场景能力、音频和物理。
 
 本清单按“**先让引擎能画东西 → 再补齐运行时 → 再上玩法与 3D → 最后跨平台/工具链**”排序，每项标注难度与大致工作量，优先级由“是否阻塞后续系统”与“当前代码基础”共同决定。
 
@@ -14,19 +14,19 @@ BlackLight 当前是“渲染设备宿主 + 少量运行时服务”的骨架：
 | --- | --- | --- |
 | `Window` / `Game` 宿主 | ✅ 可用 | 生命周期、PImpl、退出、可变/固定更新、异常清理 |
 | `RenderingDevice`（窗口层） | ✅ 可用 | OpenGL / D3D11 创建或附着 HWND、事件泵、清屏、Present |
-| `RenderingDevice`（资源层） | ❌ 空壳 | `CreateBuffer` / `CreateTexture` / `CreateGraphicsPipeline` / `Submit` 全部抛异常 |
-| `CommandList` | ❌ 空壳 | 只累加 `draw_count`，不保存任何命令 |
-| `SpriteBatch` | ⚠️ 半成品 | 只做收集与排序，无顶点上传、无纹理、无提交回调实现 |
-| `ContentManager` | ⚠️ 基础 | 仅二进制/文本文件缓存；无图片、模型、音频、着色器加载 |
+| `RenderingDevice`（资源层） | ✅ 可用 | 双后端 Buffer / Texture / Pipeline、动态顶点上传、离屏目标、命令提交与 GPU 计时 |
+| `CommandList` | ✅ 可用 | 记录并执行管线、缓冲、视口、uniform、纹理和绘制命令 |
+| `SpriteBatch` | ✅ 可用 | 动态顶点缓冲、白纹理、纹理分批、相机投影、旋转、染色、图集和动画 |
+| `ContentManager` | ⚠️ 基础 | 二进制/文本缓存与 WIC PNG/JPG 解码上传；模型、音频等加载尚未实现 |
 | `InputState` | ⚠️ 基础 | 512 个裸 VK 码 + 鼠标按键；无按键枚举、鼠标 delta、文本输入、手柄 |
 | `World`（ECS） | ⚠️ 基础 | 类型池 + `Each`；无层级、系统调度、延迟销毁、序列化、反射 |
-| `Math` | ⚠️ 基础 | `Vector2/3`、`Color`、`Matrix4`；无旋转/投影/求逆/四元数/包围盒 |
+| `Math` | ✅ 可用 | `Vector2/3/4`、`Quaternion`、`Matrix3/4`、`Color`、`Rect/AABB/Sphere/Ray/Plane/Frustum`、相机矩阵与视锥提取，含单测 |
 | `Logger` / `Time` | ✅ 可用 | 级别过滤、文件、自定义 sink；`FrameClock` 固定步长 |
-| RmlUi / `.bui` | ✅ 仅 OpenGL | GL2 渲染器 + Win32 平台；D3D11 无 UI 适配 |
+| RmlUi / `.bui` | ✅ 双后端 | GL2 / D3D11 渲染器与 Win32 输入；Demo 菜单、HUD、暂停和结束界面 |
 | 音频 / 物理 / 脚本 / 网络 | ❌ 缺失 | 无任何实现 |
 | 测试 | ⚠️ 极少 | 仅 `LoggerTests.cpp`；渲染、ECS、内容均无测试 |
 
-> 结论：**第一优先级不是加新系统，而是把渲染设备的资源层和命令提交补成真实实现。** 否则 SpriteBatch、材质、模型、3D 管线都无从谈起。
+> 第一阶段已完成；下一步按第二阶段补齐数学、输入与运行时服务。2D 使用方式和当前限制见 [2D 渲染指南](../docs/2d-rendering.md)。
 
 ---
 
@@ -42,7 +42,7 @@ BlackLight 当前是“渲染设备宿主 + 少量运行时服务”的骨架：
 
 ---
 
-## 🚀 第一阶段：渲染设备补全（P0，当前最大缺口）
+## 🚀 第一阶段：渲染设备补全（P0，已完成）
 
 ### 1.1 资源与命令提交
 
@@ -71,15 +71,17 @@ BlackLight 当前是“渲染设备宿主 + 少量运行时服务”的骨架：
 
 ### 1.3 2D 立即可用
 
-- [ ] **图像解码**：用 Windows Imaging Component（或 `stb_image`）解码 PNG/JPG，创建 `Texture` — ★☆☆（1–2d）
-- [ ] **SpriteBatch GPU 渲染器**：动态顶点缓冲 + 白纹理 + 正交投影 + 按纹理分批 — ★★☆（2–3d）
-- [ ] **Camera2D / 正交相机**：屏幕、世界坐标互转，视口与缩放 — ★☆☆（1–2d）
-- [ ] **帧统计**：FPS、CPU 帧时间、draw call、顶点数、纹理切换次数 — ★☆☆（1d）
-- [ ] **位图字体与 TextRenderer**：精灵字体渲染（HUD 与调试文本）— ★★☆（2–3d）
-- [ ] **纹理图集与帧动画**：Atlas 打包、帧序列、播放控制 — ★★☆（2–3d）
-- [ ] **GPU 计时**：GL timer query / D3D11 disjoint query（可延后）— ★★☆（2–3d）
+- [x] **图像解码**：WIC 解码 PNG/JPG，`DecodeImage` 返回 RGBA8，`LoadTexture` 创建 `Texture` — ★☆☆（1–2d）
+- [x] **SpriteBatch GPU 渲染器**：动态顶点缓冲、白纹理、正交投影、纹理分批、旋转与染色 — ★★☆（2–3d）
+- [x] **Camera2D / 正交相机**：屏幕、世界坐标互转，像素视口与缩放 — ★☆☆（1–2d）
+- [x] **帧统计**：FPS、CPU 帧时间、已完成帧的 draw call / 顶点数 / 纹理切换次数 — ★☆☆（1d）
+- [x] **位图字体与 TextRenderer**：GDI 生成 ASCII 字形图集，通过 SpriteBatch 渲染世界文字或调试文本 — ★★☆（2–3d）
+- [x] **纹理图集与帧动画**：具名区域、带 padding 的图集打包、帧序列、播放 / 暂停 / 重播 / 循环控制 — ★★☆（2–3d）
+- [x] **GPU 计时**：OpenGL elapsed timer query、D3D11 timestamp / disjoint query，异步读取毫秒结果 — ★★☆（2–3d）
 
-> **里程碑 A（第一个可玩画面）**：OpenGL 后端下用 `ContentManager` 加载 PNG → 创建纹理 → `SpriteBatch` 每帧提交 → 屏幕出现可移动/旋转的精灵，并显示 FPS。
+> **里程碑 A（第一个可玩画面，已完成）**：OpenGL 后端下用 `ContentManager` 加载 PNG → 创建纹理 → `SpriteBatch` 每帧提交 → 屏幕出现可移动/旋转的精灵，并由 RmlUi 游戏 UI 显示 FPS、金币、生命与帧统计。`Demo` 包含跳跃、平台落地、收集、尖刺、暂停、重开和通关流程。
+
+实现说明、资源生命周期、统计口径和运行方式见 [2D 渲染指南](../docs/2d-rendering.md) 与 [Demo 说明](../Demo/README.md)。
 
 ---
 
@@ -87,11 +89,11 @@ BlackLight 当前是“渲染设备宿主 + 少量运行时服务”的骨架：
 
 ### 2.1 数学库
 
-- [ ] **补齐基础类型**：`Vector4`、`Quaternion`、`Matrix3`、`Color` 混合/线性插值 — ★☆☆（1d）
-- [ ] **矩阵能力**：旋转（欧拉/四元数）、透视、正交、求逆、转置、变换点/向量 — ★☆☆（1–2d）
-- [ ] **几何类型**：`Rect`、`AABB`、`Sphere`、`Ray`、`Plane` 与相交测试 — ★☆☆（1–2d）
-- [ ] **相机矩阵**：`LookAt`、View、Projection、视锥平面提取 — ★☆☆（1d）
-- [ ] **数学单测**：矩阵乘法/求逆/投影的数值回归 — ★☆☆（1d）
+- [x] **补齐基础类型**：`Vector4`、`Quaternion`、`Matrix3`、`Color` 混合/线性插值 — ★☆☆（1d）
+- [x] **矩阵能力**：旋转（欧拉/四元数）、透视、正交、求逆、转置、变换点/向量 — ★☆☆（1–2d）
+- [x] **几何类型**：`Rect`、`AABB`、`Sphere`、`Ray`、`Plane` 与相交测试 — ★☆☆（1–2d）
+- [x] **相机矩阵**：`LookAt`、View、Projection、视锥平面提取 — ★☆☆（1d）
+- [x] **数学单测**：矩阵乘法/求逆/投影的数值回归 — ★☆☆（1d）
 
 ### 2.2 输入与时间
 
@@ -233,7 +235,7 @@ BlackLight 当前是“渲染设备宿主 + 少量运行时服务”的骨架：
 
 | 顺序 | 任务 | 难度 | 理由 |
 | --- | --- | --- | --- |
-| 1 | Math 补齐 | ★☆☆ | 纯 header、零依赖，后续全部系统需要 |
+| 1 | Math 补齐 | ★☆☆ | 纯 header、零依赖，后续全部系统需要（✅ 已完成） |
 | 2 | `CommandList` 记录 + 资源句柄设计 | ★★☆ | 决定公开 ABI，越早越省返工 |
 | 3 | OpenGL 函数加载 + 资源创建 | ★★☆ | 现有唯一带 UI 的可运行后端，先打通 |
 | 4 | 着色器编译 + 纹理格式映射 | ★★☆ | 资源能创建后的第一道使用门槛 |
@@ -287,4 +289,4 @@ graph TD
 
 ---
 
-**最后更新**：2026-11-12
+**最后更新**：2026-11-13

@@ -59,7 +59,7 @@ namespace BlackLight::Engine
 				throw std::runtime_error("Windows Imaging Component could not read the image stream");
 			Microsoft::WRL::ComPtr<IWICBitmapDecoder> decoder;
 			result = factory->CreateDecoderFromStream(stream.Get(), nullptr, WICDecodeMetadataCacheOnLoad,
-													 decoder.GetAddressOf());
+													  decoder.GetAddressOf());
 			if (FAILED(result))
 				throw std::runtime_error("Image format is unsupported or the image data is invalid");
 			Microsoft::WRL::ComPtr<IWICBitmapFrameDecode> frame;
@@ -69,6 +69,7 @@ namespace BlackLight::Engine
 			UINT height = 0;
 			if (FAILED(frame->GetSize(&width, &height)) || !width || !height ||
 				width > std::numeric_limits<UINT>::max() / 4u ||
+				height > std::numeric_limits<UINT>::max() / (width * 4u) ||
 				static_cast<std::size_t>(width) * height >
 					std::numeric_limits<std::size_t>::max() / 4u)
 				throw std::runtime_error("Image dimensions are empty or too large");

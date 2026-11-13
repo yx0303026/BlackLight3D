@@ -122,6 +122,13 @@ set(BLACKLIGHT_ENGINE_SOURCES
 
 add_library(blacklight_engine SHARED ${BLACKLIGHT_ENGINE_SOURCES}
 	include/engine/Logger.h
+	include/engine/Math.h
+	include/engine/math/Color.h
+	include/engine/math/Geometry.h
+	include/engine/math/Matrix.h
+	include/engine/math/Quaternion.h
+	include/engine/math/Scalar.h
+	include/engine/math/Vector.h
 	include/engine/collision/Capsule.h
 	include/engine/collision
 	include/engine/collision/Circle2D.h
@@ -181,8 +188,13 @@ if(BLACKLIGHT_BUILD_TESTS)
 	target_link_libraries(blacklight_engine_tests PRIVATE BlackLight::EngineStatic)
 	add_test(NAME blacklight_engine_tests COMMAND blacklight_engine_tests)
 
+	add_executable(blacklight_math_tests tests/MathTests.cpp)
+	target_link_libraries(blacklight_math_tests PRIVATE BlackLight::EngineStatic)
+	add_test(NAME blacklight_math_tests COMMAND blacklight_math_tests)
+
 	if(MSVC)
 		target_compile_options(blacklight_engine_tests PRIVATE /EHsc)
+		target_compile_options(blacklight_math_tests PRIVATE /EHsc)
 	endif()
 endif()
 

@@ -251,8 +251,7 @@ namespace BlackLight::Engine::Rendering::Detail
 					buffer_desc.Usage = D3D11_USAGE_DEFAULT;
 					buffer_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 					ComPtr<ID3D11Buffer> buffer;
-					CheckD3DResult(device, device->CreateBuffer(
-						&buffer_desc, nullptr, buffer.GetAddressOf()), "constant-buffer allocation failed");
+					CheckD3DResult(device, device->CreateBuffer(&buffer_desc, nullptr, buffer.GetAddressOf()), "constant-buffer allocation failed");
 					buffer_index = static_cast<std::uint32_t>(constant_buffers.size());
 					constant_buffer_indices.emplace(key, buffer_index);
 					constant_buffers.push_back(std::move(buffer));
@@ -304,17 +303,16 @@ namespace BlackLight::Engine::Rendering::Detail
 						existing->stage_mask |= stage;
 						continue;
 					}
-					pipeline.uniform_bindings.push_back({
-						variable_description.Name,
-						buffer_index,
-						variable_description.StartOffset,
-						variable_description.Size,
-						binding_description.BindPoint,
-						stage,
-						component_count,
-						type_description.Type == D3D_SVT_FLOAT && type_description.Elements == 0,
-						matrix,
-						type_description.Class == D3D_SVC_MATRIX_ROWS});
+					pipeline.uniform_bindings.push_back({variable_description.Name,
+														 buffer_index,
+														 variable_description.StartOffset,
+														 variable_description.Size,
+														 binding_description.BindPoint,
+														 stage,
+														 component_count,
+														 type_description.Type == D3D_SVT_FLOAT && type_description.Elements == 0,
+														 matrix,
+														 type_description.Class == D3D_SVC_MATRIX_ROWS});
 				}
 			}
 
@@ -431,7 +429,7 @@ namespace BlackLight::Engine::Rendering::Detail
 		{
 			if (device)
 				CheckD3DResult(device.Get(), device->GetDeviceRemovedReason(),
-								"D3D11 device is unavailable", RenderingError::DeviceLost);
+							   "D3D11 device is unavailable", RenderingError::DeviceLost);
 		}
 
 		/// Updates client pixels and UI density independently of swap-chain allocation.
@@ -440,10 +438,8 @@ namespace BlackLight::Engine::Rendering::Detail
 			RECT bounds{};
 			if (window && GetClientRect(window, &bounds))
 			{
-				const auto new_width = IsIconic(window) ? 0u :
-					static_cast<std::uint32_t>((std::max)(0L, bounds.right - bounds.left));
-				const auto new_height = IsIconic(window) ? 0u :
-					static_cast<std::uint32_t>((std::max)(0L, bounds.bottom - bounds.top));
+				const auto new_width = IsIconic(window) ? 0u : static_cast<std::uint32_t>((std::max)(0L, bounds.right - bounds.left));
+				const auto new_height = IsIconic(window) ? 0u : static_cast<std::uint32_t>((std::max)(0L, bounds.bottom - bounds.top));
 				resize_pending = resize_pending || width != new_width || height != new_height;
 				width = new_width;
 				height = new_height;
@@ -464,15 +460,13 @@ namespace BlackLight::Engine::Rendering::Detail
 		void CreateSurfaceViews()
 		{
 			ComPtr<ID3D11Texture2D> back_buffer;
-			CheckD3DResult(device.Get(), swap_chain->GetBuffer(
-				0, IID_PPV_ARGS(back_buffer.GetAddressOf())), "swap-chain GetBuffer failed");
+			CheckD3DResult(device.Get(), swap_chain->GetBuffer(0, IID_PPV_ARGS(back_buffer.GetAddressOf())), "swap-chain GetBuffer failed");
 			D3D11_TEXTURE2D_DESC depth_desc{};
 			back_buffer->GetDesc(&depth_desc);
 			const UINT buffer_width = depth_desc.Width;
 			const UINT buffer_height = depth_desc.Height;
 			ComPtr<ID3D11RenderTargetView> color;
-			CheckD3DResult(device.Get(), device->CreateRenderTargetView(
-				back_buffer.Get(), nullptr, color.GetAddressOf()), "swap-chain RTV creation failed");
+			CheckD3DResult(device.Get(), device->CreateRenderTargetView(back_buffer.Get(), nullptr, color.GetAddressOf()), "swap-chain RTV creation failed");
 			depth_desc.MipLevels = 1;
 			depth_desc.ArraySize = 1;
 			depth_desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -482,10 +476,8 @@ namespace BlackLight::Engine::Rendering::Detail
 			depth_desc.MiscFlags = 0;
 			ComPtr<ID3D11Texture2D> depth;
 			ComPtr<ID3D11DepthStencilView> view;
-			CheckD3DResult(device.Get(), device->CreateTexture2D(
-				&depth_desc, nullptr, depth.GetAddressOf()), "default depth texture creation failed");
-			CheckD3DResult(device.Get(), device->CreateDepthStencilView(
-				depth.Get(), nullptr, view.GetAddressOf()), "default depth view creation failed");
+			CheckD3DResult(device.Get(), device->CreateTexture2D(&depth_desc, nullptr, depth.GetAddressOf()), "default depth texture creation failed");
+			CheckD3DResult(device.Get(), device->CreateDepthStencilView(depth.Get(), nullptr, view.GetAddressOf()), "default depth view creation failed");
 			render_target = std::move(color);
 			depth_texture = std::move(depth);
 			depth_view = std::move(view);
@@ -505,9 +497,8 @@ namespace BlackLight::Engine::Rendering::Detail
 				render_target.Reset();
 				depth_view.Reset();
 				depth_texture.Reset();
-				CheckD3DResult(device.Get(), swap_chain->ResizeBuffers(
-					0, width, height, DXGI_FORMAT_UNKNOWN, 0),
-					"swap-chain ResizeBuffers failed", RenderingError::PresentationFailed);
+				CheckD3DResult(device.Get(), swap_chain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0),
+							   "swap-chain ResizeBuffers failed", RenderingError::PresentationFailed);
 			}
 			if (!render_target || !depth_view)
 				CreateSurfaceViews();
@@ -528,12 +519,8 @@ namespace BlackLight::Engine::Rendering::Detail
 			swap_desc.Windowed = TRUE;
 			swap_desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 			const D3D_FEATURE_LEVEL requested[] = {D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1};
-			CheckD3DResult(nullptr, D3D11CreateDeviceAndSwapChain(
-				nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, requested,
-				static_cast<UINT>(std::size(requested)), D3D11_SDK_VERSION, &swap_desc,
-				swap_chain.GetAddressOf(), device.GetAddressOf(), &feature_level,
-				context.GetAddressOf()), "D3D11CreateDeviceAndSwapChain failed",
-				RenderingError::DeviceCreationFailed);
+			CheckD3DResult(nullptr, D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, requested, static_cast<UINT>(std::size(requested)), D3D11_SDK_VERSION, &swap_desc, swap_chain.GetAddressOf(), device.GetAddressOf(), &feature_level, context.GetAddressOf()), "D3D11CreateDeviceAndSwapChain failed",
+						   RenderingError::DeviceCreationFailed);
 			CreateSurfaceViews();
 			capabilities = {};
 			capabilities.max_texture_width = feature_level >= D3D_FEATURE_LEVEL_11_0 ? 16384u : 8192u;
@@ -545,7 +532,8 @@ namespace BlackLight::Engine::Rendering::Detail
 			{
 				UINT quality = 0;
 				if (SUCCEEDED(device->CheckMultisampleQualityLevels(
-					DXGI_FORMAT_R8G8B8A8_UNORM, samples, &quality)) && quality)
+						DXGI_FORMAT_R8G8B8A8_UNORM, samples, &quality)) &&
+					quality)
 					capabilities.max_samples = samples;
 			}
 			device_id = g_next_device_id.fetch_add(1, std::memory_order_relaxed);
@@ -660,10 +648,9 @@ namespace BlackLight::Engine::Rendering::Detail
 					throw RenderingException(RenderingError::WindowCreationFailed, "Direct3D11",
 											 "RegisterClassW failed");
 				const std::wstring title = RmlWin32::ConvertToUTF16(config.surface.title);
-				const DWORD style = config.surface.resizable ? WS_OVERLAPPEDWINDOW :
-					(WS_OVERLAPPEDWINDOW & ~WS_SIZEBOX & ~WS_MAXIMIZEBOX);
+				const DWORD style = config.surface.resizable ? WS_OVERLAPPEDWINDOW : (WS_OVERLAPPEDWINDOW & ~WS_SIZEBOX & ~WS_MAXIMIZEBOX);
 				impl_->window = CreateWindowExW(0, kWindowClass, title.c_str(), style,
-					CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+												CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
 				if (!impl_->window)
 					throw RenderingException(RenderingError::WindowCreationFailed, "Direct3D11",
 											 "CreateWindowExW failed");
@@ -675,7 +662,7 @@ namespace BlackLight::Engine::Rendering::Detail
 							 bounds.bottom - bounds.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 			}
 			if (!SetWindowSubclass(impl_->window, Impl::WindowProcedure,
-					reinterpret_cast<UINT_PTR>(impl_.get()), reinterpret_cast<DWORD_PTR>(impl_.get())))
+								   reinterpret_cast<UINT_PTR>(impl_.get()), reinterpret_cast<DWORD_PTR>(impl_.get())))
 				throw RenderingException(RenderingError::WindowCreationFailed, "Direct3D11",
 										 "window input handler setup failed");
 			impl_->subclassed = true;
@@ -689,10 +676,10 @@ namespace BlackLight::Engine::Rendering::Detail
 				impl_->ui_renderer->Initialize(impl_->device.Get());
 				impl_->ui_input = std::make_unique<TextInputMethodEditor_Win32>();
 				const std::string name = "blacklight-d3d11-" +
-					std::to_string(reinterpret_cast<std::uintptr_t>(impl_.get()));
+										 std::to_string(reinterpret_cast<std::uintptr_t>(impl_.get()));
 				impl_->ui_context = Rml::CreateContext(name,
-					{static_cast<int>(impl_->width), static_cast<int>(impl_->height)},
-					impl_->ui_renderer.get(), impl_->ui_input.get());
+													   {static_cast<int>(impl_->width), static_cast<int>(impl_->height)},
+													   impl_->ui_renderer.get(), impl_->ui_input.get());
 				if (!impl_->ui_context)
 					throw RenderingException(RenderingError::DeviceCreationFailed, "Direct3D11",
 											 "RmlUi context creation failed");
@@ -801,8 +788,7 @@ namespace BlackLight::Engine::Rendering::Detail
 				throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
 										 "depth texture has no depth-stencil view");
 		}
-		if (color && depth && (color->width != depth->width || color->height != depth->height ||
-							   color->sample_count != depth->sample_count))
+		if (color && depth && (color->width != depth->width || color->height != depth->height || color->sample_count != depth->sample_count))
 			throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
 									 "color and depth target dimensions or sample counts do not match");
 
@@ -870,8 +856,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		if (impl_->close || !impl_->width || !impl_->height)
 			return;
 		CheckD3DResult(impl_->device.Get(),
-			impl_->swap_chain->Present(impl_->config.surface.vertical_sync ? 1 : 0, 0),
-			"swap-chain Present failed", RenderingError::PresentationFailed);
+					   impl_->swap_chain->Present(impl_->config.surface.vertical_sync ? 1 : 0, 0),
+					   "swap-chain Present failed", RenderingError::PresentationFailed);
 	}
 
 	/// Recreates the native device while retaining the HWND, UI documents, and input sink.
@@ -1068,7 +1054,7 @@ namespace BlackLight::Engine::Rendering::Detail
 					binding.buffer_index >= pipeline->constant_buffer_objects.size() ||
 					binding.byte_offset > pipeline->constant_data[binding.buffer_index].size() ||
 					binding.byte_size > pipeline->constant_data[binding.buffer_index].size() -
-										   binding.byte_offset)
+											binding.byte_offset)
 					throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
 											 "uniform reflection range is invalid");
 				auto &data = pipeline->constant_data[binding.buffer_index];
@@ -1121,7 +1107,7 @@ namespace BlackLight::Engine::Rendering::Detail
 			for (const auto &entry : commands.impl_->commands)
 			{
 				std::visit([&](const auto &command)
-				{
+						   {
 					using T = std::decay_t<decltype(command)>;
 					if constexpr (std::is_same_v<T, CommandList::Impl::PipelineCommand>)
 					{
@@ -1254,8 +1240,7 @@ namespace BlackLight::Engine::Rendering::Detail
 							throw RenderingException(RenderingError::SubmissionFailed, "Direct3D11",
 													 "indexed draw range exceeds the index buffer");
 						context.DrawIndexed(command.count, command.first, command.vertex_offset);
-					}
-				}, entry);
+					} }, entry);
 			}
 		}
 		catch (const RenderingException &)
@@ -1323,9 +1308,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		D3D11_SUBRESOURCE_DATA initial{};
 		initial.pSysMem = description.initial_data;
 		ComPtr<ID3D11Buffer> buffer;
-		CheckD3DResult(impl_->device.Get(), impl_->device->CreateBuffer(
-			&native_desc, description.initial_data ? &initial : nullptr, buffer.GetAddressOf()),
-			"ID3D11Device::CreateBuffer failed");
+		CheckD3DResult(impl_->device.Get(), impl_->device->CreateBuffer(&native_desc, description.initial_data ? &initial : nullptr, buffer.GetAddressOf()),
+					   "ID3D11Device::CreateBuffer failed");
 
 		ComPtr<ID3D11ShaderResourceView> storage_view;
 		ComPtr<ID3D11UnorderedAccessView> storage_unordered_view;
@@ -1337,18 +1321,16 @@ namespace BlackLight::Engine::Rendering::Detail
 			view_desc.BufferEx.FirstElement = 0;
 			view_desc.BufferEx.NumElements = static_cast<UINT>(description.size / 4);
 			view_desc.BufferEx.Flags = D3D11_BUFFEREX_SRV_FLAG_RAW;
-			CheckD3DResult(impl_->device.Get(), impl_->device->CreateShaderResourceView(
-				buffer.Get(), &view_desc, storage_view.GetAddressOf()),
-				"raw storage-buffer view creation failed");
+			CheckD3DResult(impl_->device.Get(), impl_->device->CreateShaderResourceView(buffer.Get(), &view_desc, storage_view.GetAddressOf()),
+						   "raw storage-buffer view creation failed");
 			D3D11_UNORDERED_ACCESS_VIEW_DESC unordered_view_desc{};
 			unordered_view_desc.Format = DXGI_FORMAT_R32_TYPELESS;
 			unordered_view_desc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
 			unordered_view_desc.Buffer.FirstElement = 0;
 			unordered_view_desc.Buffer.NumElements = static_cast<UINT>(description.size / 4);
 			unordered_view_desc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
-			CheckD3DResult(impl_->device.Get(), impl_->device->CreateUnorderedAccessView(
-				buffer.Get(), &unordered_view_desc, storage_unordered_view.GetAddressOf()),
-				"raw storage-buffer UAV creation failed");
+			CheckD3DResult(impl_->device.Get(), impl_->device->CreateUnorderedAccessView(buffer.Get(), &unordered_view_desc, storage_unordered_view.GetAddressOf()),
+						   "raw storage-buffer UAV creation failed");
 		}
 
 		auto resource = std::make_shared<Buffer::Impl>();
@@ -1362,11 +1344,11 @@ namespace BlackLight::Engine::Rendering::Detail
 		resource->quaternary = reinterpret_cast<std::uintptr_t>(storage_unordered_view.Get());
 		resource->deletion = impl_->lifetime->Register(
 			[buffer, storage_view, storage_unordered_view]() mutable
-		{
-			storage_unordered_view.Reset();
-			storage_view.Reset();
-			buffer.Reset();
-		});
+			{
+				storage_unordered_view.Reset();
+				storage_view.Reset();
+				buffer.Reset();
+			});
 		if (description.usage == BufferUsage::DynamicVertex)
 		{
 			resource->shadow.resize(description.size, 0);
@@ -1398,9 +1380,8 @@ namespace BlackLight::Engine::Rendering::Detail
 		std::memcpy(buffer.impl_->shadow.data() + offset, data, size);
 		D3D11_MAPPED_SUBRESOURCE mapped{};
 		auto *native = reinterpret_cast<ID3D11Buffer *>(buffer.impl_->native);
-		CheckD3DResult(impl_->device.Get(), impl_->context->Map(
-			native, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped),
-			"dynamic vertex-buffer mapping failed");
+		CheckD3DResult(impl_->device.Get(), impl_->context->Map(native, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped),
+					   "dynamic vertex-buffer mapping failed");
 		std::memcpy(mapped.pData, buffer.impl_->shadow.data(), buffer.impl_->size);
 		impl_->context->Unmap(native, 0);
 		impl_->CheckDevice();
@@ -1419,13 +1400,10 @@ namespace BlackLight::Engine::Rendering::Detail
 				continue;
 			D3D11_QUERY_DESC description{};
 			description.Query = D3D11_QUERY_TIMESTAMP;
-			CheckD3DResult(impl_->device.Get(), impl_->device->CreateQuery(
-				&description, impl_->timer_starts[index].GetAddressOf()), "GPU start-timestamp query creation failed");
-			CheckD3DResult(impl_->device.Get(), impl_->device->CreateQuery(
-				&description, impl_->timer_ends[index].GetAddressOf()), "GPU end-timestamp query creation failed");
+			CheckD3DResult(impl_->device.Get(), impl_->device->CreateQuery(&description, impl_->timer_starts[index].GetAddressOf()), "GPU start-timestamp query creation failed");
+			CheckD3DResult(impl_->device.Get(), impl_->device->CreateQuery(&description, impl_->timer_ends[index].GetAddressOf()), "GPU end-timestamp query creation failed");
 			description.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
-			CheckD3DResult(impl_->device.Get(), impl_->device->CreateQuery(
-				&description, impl_->timer_disjoint[index].GetAddressOf()), "GPU disjoint query creation failed");
+			CheckD3DResult(impl_->device.Get(), impl_->device->CreateQuery(&description, impl_->timer_disjoint[index].GetAddressOf()), "GPU disjoint query creation failed");
 		}
 		impl_->timer_query_skipped = false;
 		for (std::size_t attempt = 0; attempt < impl_->timer_query_pending.size(); ++attempt)
@@ -1467,18 +1445,23 @@ namespace BlackLight::Engine::Rendering::Detail
 			if (!impl_->timer_query_pending[index])
 				continue;
 			D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint{};
-			if (impl_->context->GetData(
-					impl_->timer_disjoint[index].Get(), &disjoint, sizeof(disjoint),
-					D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_FALSE)
+			const HRESULT disjoint_result = impl_->context->GetData(
+				impl_->timer_disjoint[index].Get(), &disjoint, sizeof(disjoint),
+				D3D11_ASYNC_GETDATA_DONOTFLUSH);
+			CheckD3DResult(impl_->device.Get(), disjoint_result, "GPU disjoint query polling failed");
+			if (disjoint_result == S_FALSE)
 				continue;
 			UINT64 start = 0;
 			UINT64 end = 0;
-			if (impl_->context->GetData(
-					impl_->timer_starts[index].Get(), &start, sizeof(start),
-					D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_FALSE ||
-				impl_->context->GetData(
-					impl_->timer_ends[index].Get(), &end, sizeof(end),
-					D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_FALSE)
+			const HRESULT start_result = impl_->context->GetData(
+				impl_->timer_starts[index].Get(), &start, sizeof(start),
+				D3D11_ASYNC_GETDATA_DONOTFLUSH);
+			const HRESULT end_result = impl_->context->GetData(
+				impl_->timer_ends[index].Get(), &end, sizeof(end),
+				D3D11_ASYNC_GETDATA_DONOTFLUSH);
+			CheckD3DResult(impl_->device.Get(), start_result, "GPU start timestamp polling failed");
+			CheckD3DResult(impl_->device.Get(), end_result, "GPU end timestamp polling failed");
+			if (start_result == S_FALSE || end_result == S_FALSE)
 				continue;
 			impl_->timer_query_pending[index] = false;
 			if (disjoint.Disjoint || !disjoint.Frequency || end < start)
@@ -1593,9 +1576,7 @@ namespace BlackLight::Engine::Rendering::Detail
 			native_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE |
 									(description.render_target ? D3D11_BIND_RENDER_TARGET : 0);
 		ComPtr<ID3D11Texture2D> texture;
-		CheckD3DResult(impl_->device.Get(), impl_->device->CreateTexture2D(
-			&native_desc, initial_subresources.empty() ? nullptr : initial_subresources.data(),
-			texture.GetAddressOf()), "ID3D11Device::CreateTexture2D failed");
+		CheckD3DResult(impl_->device.Get(), impl_->device->CreateTexture2D(&native_desc, initial_subresources.empty() ? nullptr : initial_subresources.data(), texture.GetAddressOf()), "ID3D11Device::CreateTexture2D failed");
 
 		ComPtr<ID3D11ShaderResourceView> shader_view;
 		ComPtr<ID3D11SamplerState> sampler;
@@ -1609,9 +1590,8 @@ namespace BlackLight::Engine::Rendering::Detail
 				view_desc.Format = format;
 				view_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 				view_desc.Texture2D.MipLevels = description.mip_levels;
-				CheckD3DResult(impl_->device.Get(), impl_->device->CreateShaderResourceView(
-					texture.Get(), &view_desc, shader_view.GetAddressOf()),
-					"texture shader-resource view creation failed");
+				CheckD3DResult(impl_->device.Get(), impl_->device->CreateShaderResourceView(texture.Get(), &view_desc, shader_view.GetAddressOf()),
+							   "texture shader-resource view creation failed");
 
 				D3D11_SAMPLER_DESC sampler_desc{};
 				sampler_desc.Filter = MapSamplerFilter(
@@ -1624,8 +1604,7 @@ namespace BlackLight::Engine::Rendering::Detail
 				sampler_desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
 				sampler_desc.MinLOD = 0.0f;
 				sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
-				CheckD3DResult(impl_->device.Get(), impl_->device->CreateSamplerState(
-					&sampler_desc, sampler.GetAddressOf()), "texture sampler creation failed");
+				CheckD3DResult(impl_->device.Get(), impl_->device->CreateSamplerState(&sampler_desc, sampler.GetAddressOf()), "texture sampler creation failed");
 			}
 			if (description.render_target)
 			{
@@ -1640,9 +1619,8 @@ namespace BlackLight::Engine::Rendering::Detail
 					target_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 					target_desc.Texture2D.MipSlice = 0;
 				}
-				CheckD3DResult(impl_->device.Get(), impl_->device->CreateRenderTargetView(
-					texture.Get(), &target_desc, render_target_view.GetAddressOf()),
-					"texture render-target view creation failed");
+				CheckD3DResult(impl_->device.Get(), impl_->device->CreateRenderTargetView(texture.Get(), &target_desc, render_target_view.GetAddressOf()),
+							   "texture render-target view creation failed");
 			}
 		}
 		else
@@ -1658,9 +1636,8 @@ namespace BlackLight::Engine::Rendering::Detail
 				view_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
 				view_desc.Texture2D.MipSlice = 0;
 			}
-			CheckD3DResult(impl_->device.Get(), impl_->device->CreateDepthStencilView(
-				texture.Get(), &view_desc, depth_view.GetAddressOf()),
-				"texture depth-stencil view creation failed");
+			CheckD3DResult(impl_->device.Get(), impl_->device->CreateDepthStencilView(texture.Get(), &view_desc, depth_view.GetAddressOf()),
+						   "texture depth-stencil view creation failed");
 		}
 
 		auto resource = std::make_shared<Texture::Impl>();
@@ -1799,12 +1776,8 @@ namespace BlackLight::Engine::Rendering::Detail
 
 		ComPtr<ID3D11VertexShader> vertex_shader;
 		ComPtr<ID3D11PixelShader> pixel_shader;
-		CheckD3DResult(impl_->device.Get(), impl_->device->CreateVertexShader(
-			vertex_bytecode->GetBufferPointer(), vertex_bytecode->GetBufferSize(),
-			nullptr, vertex_shader.GetAddressOf()), "vertex shader object creation failed");
-		CheckD3DResult(impl_->device.Get(), impl_->device->CreatePixelShader(
-			pixel_bytecode->GetBufferPointer(), pixel_bytecode->GetBufferSize(),
-			nullptr, pixel_shader.GetAddressOf()), "pixel shader object creation failed");
+		CheckD3DResult(impl_->device.Get(), impl_->device->CreateVertexShader(vertex_bytecode->GetBufferPointer(), vertex_bytecode->GetBufferSize(), nullptr, vertex_shader.GetAddressOf()), "vertex shader object creation failed");
+		CheckD3DResult(impl_->device.Get(), impl_->device->CreatePixelShader(pixel_bytecode->GetBufferPointer(), pixel_bytecode->GetBufferSize(), nullptr, pixel_shader.GetAddressOf()), "pixel shader object creation failed");
 
 		std::vector<D3D11_INPUT_ELEMENT_DESC> input_elements;
 		std::vector<std::string> semantic_names;
@@ -1845,24 +1818,20 @@ namespace BlackLight::Engine::Rendering::Detail
 
 		ComPtr<ID3D11InputLayout> input_layout;
 		if (!input_elements.empty())
-			CheckD3DResult(impl_->device.Get(), impl_->device->CreateInputLayout(
-				input_elements.data(), static_cast<UINT>(input_elements.size()),
-				vertex_bytecode->GetBufferPointer(), vertex_bytecode->GetBufferSize(),
-				input_layout.GetAddressOf()), "input layout does not match the vertex shader signature");
+			CheckD3DResult(impl_->device.Get(), impl_->device->CreateInputLayout(input_elements.data(), static_cast<UINT>(input_elements.size()), vertex_bytecode->GetBufferPointer(), vertex_bytecode->GetBufferSize(), input_layout.GetAddressOf()), "input layout does not match the vertex shader signature");
 
 		D3D11_RASTERIZER_DESC raster_desc{};
 		raster_desc.FillMode = D3D11_FILL_SOLID;
 		raster_desc.CullMode = description.cull_mode == GraphicsPipelineDesc::CullMode::None
 								   ? D3D11_CULL_NONE
-								   : description.cull_mode == GraphicsPipelineDesc::CullMode::Front
-										 ? D3D11_CULL_FRONT
-										 : D3D11_CULL_BACK;
+							   : description.cull_mode == GraphicsPipelineDesc::CullMode::Front
+								   ? D3D11_CULL_FRONT
+								   : D3D11_CULL_BACK;
 		raster_desc.FrontCounterClockwise = FALSE;
 		raster_desc.DepthClipEnable = TRUE;
 		raster_desc.MultisampleEnable = description.sample_count > 1 ? TRUE : FALSE;
 		ComPtr<ID3D11RasterizerState> raster_state;
-		CheckD3DResult(impl_->device.Get(), impl_->device->CreateRasterizerState(
-			&raster_desc, raster_state.GetAddressOf()), "rasterizer-state creation failed");
+		CheckD3DResult(impl_->device.Get(), impl_->device->CreateRasterizerState(&raster_desc, raster_state.GetAddressOf()), "rasterizer-state creation failed");
 
 		D3D11_BLEND_DESC blend_desc{};
 		blend_desc.AlphaToCoverageEnable = FALSE;
@@ -1877,8 +1846,7 @@ namespace BlackLight::Engine::Rendering::Detail
 		render_target_blend.BlendOpAlpha = D3D11_BLEND_OP_ADD;
 		render_target_blend.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
 		ComPtr<ID3D11BlendState> blend_state;
-		CheckD3DResult(impl_->device.Get(), impl_->device->CreateBlendState(
-			&blend_desc, blend_state.GetAddressOf()), "blend-state creation failed");
+		CheckD3DResult(impl_->device.Get(), impl_->device->CreateBlendState(&blend_desc, blend_state.GetAddressOf()), "blend-state creation failed");
 
 		D3D11_DEPTH_STENCIL_DESC depth_desc{};
 		depth_desc.DepthEnable = description.depth_test;
@@ -1895,8 +1863,7 @@ namespace BlackLight::Engine::Rendering::Detail
 		depth_desc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
 		depth_desc.BackFace = depth_desc.FrontFace;
 		ComPtr<ID3D11DepthStencilState> depth_state;
-		CheckD3DResult(impl_->device.Get(), impl_->device->CreateDepthStencilState(
-			&depth_desc, depth_state.GetAddressOf()), "depth-stencil-state creation failed");
+		CheckD3DResult(impl_->device.Get(), impl_->device->CreateDepthStencilState(&depth_desc, depth_state.GetAddressOf()), "depth-stencil-state creation failed");
 
 		std::vector<ComPtr<ID3D11Buffer>> constant_buffers;
 		std::unordered_map<std::string, std::uint32_t> constant_buffer_indices;

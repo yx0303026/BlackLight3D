@@ -104,8 +104,8 @@ namespace BlackLight::Engine
 						throw;
 					}
 					impl_->device->EndGpuTimerQuery();
-					impl_->device->Present();
 					OnFrameTimingFinished();
+					impl_->device->Present();
 				}
 				catch (const Rendering::RenderingException &error)
 				{

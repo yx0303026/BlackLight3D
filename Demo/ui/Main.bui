@@ -18,9 +18,11 @@
     .hud {
       position: absolute;
       left: 18dp;
+      right: 18dp;
       top: 18dp;
       display: flex;
       flex-direction: row;
+      flex-wrap: wrap;
       align-items: center;
       gap: 10dp;
       padding: 9dp 12dp;
@@ -42,16 +44,6 @@
       padding: 5dp 8dp;
     }
 
-    .help {
-      position: absolute;
-      right: 18dp;
-      top: 18dp;
-      padding: 8dp 11dp;
-      background-color: #f6f3e7;
-      border: 2dp #173844;
-      color: #173844;
-    }
-
     .overlay {
       position: absolute;
       left: 0;
@@ -66,6 +58,7 @@
 
     .panel {
       width: 390dp;
+      max-width: 90%;
       padding: 28dp;
       background-color: #f6f3e7;
       border: 4dp #173844;
@@ -102,12 +95,22 @@
     button:active { background-color: #bd4f45; }
     .hidden { display: none; }
 
+    .actions {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 12dp;
+      justify-content: center;
+    }
+
     .footer {
       position: absolute;
       left: 18dp;
+      right: 18dp;
       bottom: 16dp;
       display: flex;
       flex-direction: row;
+      flex-wrap: wrap;
       gap: 9dp;
     }
 
@@ -117,6 +120,16 @@
       padding: 6dp 9dp;
       color: #173844;
       font-size: 12dp;
+      min-width: 78dp;
+    }
+
+    @media (max-height: 500dp) {
+      .panel { padding: 18dp 22dp; }
+      .title { font-size: 28dp; margin-bottom: 6dp; }
+      .subtitle { font-size: 15dp; margin-bottom: 12dp; }
+      button { padding: 8dp 18dp; font-size: 15dp; }
+      .footer { gap: 6dp; }
+      .footer-item { padding: 4dp 6dp; font-size: 11dp; min-width: 0; }
     }
   </styles>
 
@@ -127,7 +140,6 @@
       <div class="hud-value">LIVES <span id="lives_value">3</span></div>
       <div class="hud-value" id="status_value">READY</div>
     </div>
-    <div class="help">A / D or arrows to move | Space to jump | Esc to pause</div>
     <div class="footer">
       <div class="footer-item">FPS <span id="fps_value">0</span></div>
       <div class="footer-item">CPU <span id="frame_value">0 ms</span></div>
@@ -139,27 +151,31 @@
     <div id="start_panel" class="overlay">
       <div class="panel">
         <div class="title">CLOUD HOP</div>
-        <div class="subtitle">Find the seven sun coins, dodge the coral spikes, and reach the beacon.</div>
+        <div class="subtitle">Seven sun coins. One summit above the clouds.</div>
         <button id="start_button">START GAME</button>
       </div>
     </div>
     <div id="pause_panel" class="overlay hidden">
       <div class="panel">
         <div class="title">PAUSED</div>
-        <div class="subtitle">Press Escape to keep climbing.</div>
+        <div class="subtitle">The summit can wait.</div>
+        <div class="actions">
+          <button id="resume_button">RESUME</button>
+          <button id="restart_button">RESTART</button>
+        </div>
       </div>
     </div>
     <div id="game_over_panel" class="overlay hidden">
       <div class="panel">
         <div class="title">TRY AGAIN</div>
-        <div class="subtitle">The climb is still yours. Press R or restart below.</div>
+        <div class="subtitle">The summit is still there.</div>
         <button id="retry_button">RESTART</button>
       </div>
     </div>
     <div id="win_panel" class="overlay hidden">
       <div class="panel">
         <div class="title">NICE CLIMB!</div>
-        <div class="subtitle">You reached the beacon. Press R to play another round.</div>
+        <div class="subtitle">The beacon is yours.</div>
         <button id="play_again_button">PLAY AGAIN</button>
       </div>
     </div>

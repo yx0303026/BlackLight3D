@@ -33,13 +33,13 @@ namespace BlackLight::Engine
 		FrameStats &operator=(const FrameStats &) = delete;
 		/// Starts a new measurement window and clears current-frame draw counters.
 		void BeginFrame();
-		/// Finishes CPU timing for the active frame.
+		/// Publishes the active frame's CPU timing and draw counters.
 		void EndFrame();
 		/// Adds one sprite draw and its submitted vertex count.
 		void RecordDraw(std::uint64_t vertices, bool texture_changed) noexcept;
 		/// Stores the latest completed GPU timing when available.
 		void SetGpuFrameMilliseconds(double milliseconds) noexcept;
-		/// Returns the latest timing and rendering counters.
+		/// Returns completed-frame counters, FPS, and the latest available GPU duration.
 		FrameStatsSnapshot GetSnapshot() const noexcept;
 
 	private:

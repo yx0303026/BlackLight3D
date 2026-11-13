@@ -14,7 +14,9 @@
 #include <cmath>
 #include <filesystem>
 #include <functional>
+#include <iomanip>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -88,9 +90,7 @@ namespace
 	/// Stores one horizontal platform in world coordinates.
 	struct Platform
 	{
-		float x;
-		float y;
-		float width;
+		Math::Rect bounds;
 	};
 
 	/// Stores one animated collectible in world coordinates.
@@ -103,10 +103,7 @@ namespace
 	/// Stores a hazard rectangle in world coordinates.
 	struct Hazard
 	{
-		float x;
-		float y;
-		float width;
-		float height;
+		Math::Rect bounds;
 	};
 }
 
@@ -140,6 +137,8 @@ protected:
 									  { RestartGame(); });
 		if (auto *element = ui_tree_->FindById("start_button"))
 			element->AddEventListener("click", &start_listener_);
+		if (auto *element = ui_tree_->FindById("resume_button"))
+			element->AddEventListener("click", &start_listener_);
 		if (auto *element = ui_tree_->FindById("restart_button"))
 			element->AddEventListener("click", &restart_listener_);
 		if (auto *element = ui_tree_->FindById("retry_button"))
@@ -153,21 +152,42 @@ protected:
 	/// Advances menu state and refreshes the interactive HUD.
 	void OnUpdate(const GameTime &game_time) override
 	{
-		if (GetInput().WasKeyPressed(VK_ESCAPE) && started_ && !game_over_)
+		if (GetInput().WasKeyPressed(VK_RETURN) && !started_)
+			StartGame();
+		if (GetInput().WasKeyPressed(VK_ESCAPE) && started_ && !game_over_ && !won_)
 		{
 			paused_ = !paused_;
+			jump_buffer_ = 0.0f;
 			SetDisplay("pause_panel", paused_);
+			UpdateUi();
 		}
 		if (GetInput().WasKeyPressed('R') && (game_over_ || won_))
 			RestartGame();
-		player_moving_ = GetInput().IsKeyDown(VK_LEFT) || GetInput().IsKeyDown(VK_RIGHT) ||
-						 GetInput().IsKeyDown('A') || GetInput().IsKeyDown('D');
-		if (player_moving_)
-			player_animation_->Update(game_time.elapsed_seconds);
+		const bool playing = started_ && !paused_ && !game_over_ && !won_;
+		player_moving_ = playing && (GetInput().IsKeyDown(VK_LEFT) || GetInput().IsKeyDown(VK_RIGHT) ||
+									 GetInput().IsKeyDown('A') || GetInput().IsKeyDown('D'));
+		if (playing)
+		{
+			if (GetInput().WasKeyPressed(VK_SPACE) || GetInput().WasKeyPressed(VK_UP) ||
+				GetInput().WasKeyPressed('W'))
+				jump_buffer_ = 0.14f;
+			if (player_moving_)
+			{
+				player_animation_->Play();
+				player_animation_->Update(game_time.elapsed_seconds);
+			}
+			else
+				player_animation_->Reset();
+			coin_time_ += game_time.elapsed_seconds;
+		}
 		else
-			player_animation_->Reset();
-		coin_time_ += game_time.elapsed_seconds;
-		UpdateUi();
+			player_animation_->Pause();
+		ui_refresh_elapsed_ += game_time.elapsed_seconds;
+		if (ui_refresh_elapsed_ >= 0.2)
+		{
+			UpdateUi();
+			ui_refresh_elapsed_ = 0.0;
+		}
 	}
 
 	/// Advances horizontal movement, jumping, collisions, and collectible state at fixed rate.
@@ -182,43 +202,49 @@ protected:
 		if (GetInput().IsKeyDown(VK_RIGHT) || GetInput().IsKeyDown('D'))
 			direction += 1.0f;
 		velocity_.x = direction * kMoveSpeed;
-		if (GetInput().WasKeyPressed(VK_SPACE) || GetInput().WasKeyPressed(VK_UP) ||
-			GetInput().WasKeyPressed('W'))
+		if (direction != 0.0f)
+			facing_left_ = direction < 0.0f;
+		if (jump_buffer_ > 0.0f && grounded_)
 		{
-			if (grounded_)
-			{
-				velocity_.y = -kJumpSpeed;
-				grounded_ = false;
-			}
+			velocity_.y = -kJumpSpeed;
+			grounded_ = false;
+			jump_buffer_ = 0.0f;
 		}
+		jump_buffer_ = (std::max)(0.0f, jump_buffer_ - delta);
 		const float previous_y = player_position_.y;
 		velocity_.y = (std::min)(velocity_.y + kGravity * delta, kMaximumFallSpeed);
-		player_position_.x = std::clamp(player_position_.x + velocity_.x * delta,
-										0.0f, kWorldWidth - kPlayerWidth);
+		player_position_.x = Math::Clamp(player_position_.x + velocity_.x * delta,
+										 0.0f, kWorldWidth - kPlayerWidth);
 		player_position_.y += velocity_.y * delta;
 		grounded_ = false;
+		const Math::Rect previous_bounds = GetPlayerBoundsAt(previous_y);
 		for (const auto &platform : platforms_)
 		{
-			const float previous_bottom = previous_y + kPlayerHeight;
-			const float current_bottom = player_position_.y + kPlayerHeight;
-			const bool horizontal_overlap =
-				player_position_.x + kPlayerWidth > platform.x &&
-				player_position_.x < platform.x + platform.width;
-			if (velocity_.y >= 0.0f && previous_bottom <= platform.y &&
-				current_bottom >= platform.y && horizontal_overlap)
-			{
-				player_position_.y = platform.y - kPlayerHeight;
-				velocity_.y = 0.0f;
-				grounded_ = true;
-			}
+			const Math::Rect player_bounds = GetPlayerBounds();
+			if (velocity_.y < 0.0f ||
+				previous_bounds.maximum.y > platform.bounds.minimum.y ||
+				player_bounds.maximum.y < platform.bounds.minimum.y)
+				continue;
+			if (player_bounds.minimum.x >= platform.bounds.maximum.x ||
+				player_bounds.maximum.x <= platform.bounds.minimum.x)
+				continue;
+			player_position_.y = platform.bounds.minimum.y - kPlayerHeight;
+			velocity_.y = 0.0f;
+			grounded_ = true;
 		}
 		CollectCoins();
 		if (TouchesHazard() || player_position_.y > kWorldHeight + 200.0f)
+		{
 			LoseLife();
-		if (player_position_.x > kWorldWidth - 100.0f && player_position_.y < 560.0f)
+			return;
+		}
+		const Math::Rect goal_bounds =
+			Math::Rect::FromPositionSize({kWorldWidth - 100.0f, 0.0f}, {100.0f, 560.0f});
+		if (goal_bounds.Contains(GetPlayerBounds().minimum))
 		{
 			won_ = true;
 			SetDisplay("win_panel", true);
+			UpdateUi();
 		}
 	}
 
@@ -233,12 +259,10 @@ protected:
 			return;
 		camera_.SetViewport(0.0f, 0.0f, static_cast<float>(surface.width),
 							static_cast<float>(surface.height));
-		camera_.SetPosition({std::clamp(player_position_.x + kPlayerWidth * 0.5f,
-										static_cast<float>(surface.width) / camera_.GetZoom() * 0.5f,
-										kWorldWidth - static_cast<float>(surface.width) / camera_.GetZoom() * 0.5f),
-							 std::clamp(player_position_.y + kPlayerHeight * 0.5f - 90.0f,
-										static_cast<float>(surface.height) / camera_.GetZoom() * 0.5f,
-										kWorldHeight - static_cast<float>(surface.height) / camera_.GetZoom() * 0.5f)});
+		const float visible_width = static_cast<float>(surface.width) / camera_.GetZoom();
+		const float visible_height = static_cast<float>(surface.height) / camera_.GetZoom();
+		camera_.SetPosition({FollowCoordinate(player_position_.x + kPlayerWidth * 0.5f, visible_width, kWorldWidth),
+							 FollowCoordinate(player_position_.y + kPlayerHeight * 0.5f - 90.0f, visible_height, kWorldHeight)});
 		renderer_->SetCamera(camera_);
 
 		auto &batch = GetSpriteBatch();
@@ -252,25 +276,36 @@ protected:
 		{
 			SpriteCommand command;
 			atlas_->GetRegion("spikes").Apply(command);
-			command.position = {hazard.x, hazard.y};
-			command.size = {hazard.width, hazard.height};
+			command.position = hazard.bounds.minimum;
+			command.size = hazard.bounds.GetSize();
 			batch.Draw(command);
 		}
 		for (const auto &coin : coins_)
 			if (!coin.collected)
-				DrawRegion("coin", {coin.position.x, coin.position.y + static_cast<float>(std::sin(coin_time_ * 4.0) * 5.0)}, {40.0f, 40.0f});
+			{
+				SpriteCommand coin_command;
+				atlas_->GetRegion("coin").Apply(coin_command);
+				coin_command.position = {coin.position.x + 20.0f,
+										 coin.position.y + 20.0f + Math::Lerp(-5.0f, 5.0f, 0.5f + 0.5f * static_cast<float>(std::sin(coin_time_ * 4.0)))};
+				coin_command.origin = {20.0f, 20.0f};
+				coin_command.size = {40.0f, 40.0f};
+				coin_command.rotation = static_cast<float>(std::sin(coin_time_ * 2.0) * 0.18);
+				batch.Draw(coin_command);
+			}
 		SpriteCommand player_command;
 		player_animation_->GetCurrentFrame().Apply(player_command);
-		player_command.position = player_position_;
+		player_command.origin = {kPlayerWidth * 0.5f, kPlayerHeight * 0.5f};
+		player_command.position = player_position_ + player_command.origin;
 		player_command.size = {kPlayerWidth, kPlayerHeight};
+		player_command.scale.x = facing_left_ ? -1.0f : 1.0f;
+		player_command.rotation = grounded_ ? 0.0f : velocity_.x / kMoveSpeed * 0.12f;
 		batch.Draw(player_command);
-		DrawSolid({kWorldWidth - 115.0f, 430.0f}, {12.0f, 130.0f},
+		DrawSolid({kWorldWidth - 115.0f, 280.0f}, {12.0f, 130.0f},
 				  Math::Color::FromRgba8(238, 219, 166));
-		DrawRegion("checkpoint", {kWorldWidth - 150.0f, 430.0f}, {72.0f, 48.0f});
+		DrawRegion("checkpoint", {kWorldWidth - 150.0f, 280.0f}, {72.0f, 48.0f});
 		if (text_renderer_)
 		{
-			const Math::Vector2 label_position = camera_.ScreenToWorld({20.0f, 28.0f});
-			text_renderer_->Draw(batch, "BLACKLIGHT PLATFORMER", label_position, 0.8f,
+			text_renderer_->Draw(batch, "TRAILHEAD", {40.0f, 1320.0f}, 1.0f,
 								 Math::Color::FromRgba8(25, 48, 61));
 		}
 		batch.End();
@@ -304,6 +339,20 @@ private:
 	static constexpr float kJumpSpeed = 610.0f;
 	static constexpr float kGravity = 1320.0f;
 	static constexpr float kMaximumFallSpeed = 900.0f;
+
+	/// Centers oversized viewports and otherwise keeps the camera inside the level.
+	static float FollowCoordinate(float target, float visible_extent, float world_extent) noexcept
+	{
+		return visible_extent >= world_extent ? world_extent * 0.5f : Math::Clamp(target, visible_extent * 0.5f, world_extent - visible_extent * 0.5f);
+	}
+
+	/// Formats timing values without truncating digits from larger durations.
+	static std::string FormatMilliseconds(double value)
+	{
+		std::ostringstream stream;
+		stream << std::fixed << std::setprecision(2) << value << " ms";
+		return stream.str();
+	}
 
 	/// Creates the streaming renderer, content texture, atlas, animation, and font.
 	void CreateGraphics()
@@ -368,18 +417,19 @@ private:
 	void ResetGame()
 	{
 		platforms_ = {
-			{0.0f, 1420.0f, kWorldWidth},
-			{225.0f, 1285.0f, 210.0f},
-			{510.0f, 1155.0f, 190.0f},
-			{800.0f, 1025.0f, 210.0f},
-			{1105.0f, 895.0f, 195.0f},
-			{1390.0f, 765.0f, 205.0f},
-			{1690.0f, 635.0f, 205.0f},
-			{1985.0f, 505.0f, 230.0f},
-			{2240.0f, 410.0f, 220.0f}};
-		hazards_ = {{850.0f, 993.0f, 45.0f, 32.0f},
-					{1450.0f, 733.0f, 45.0f, 32.0f},
-					{2040.0f, 473.0f, 45.0f, 32.0f}};
+			{Math::Rect::FromPositionSize({0.0f, 1420.0f}, {kWorldWidth, 48.0f})},
+			{Math::Rect::FromPositionSize({225.0f, 1285.0f}, {210.0f, 48.0f})},
+			{Math::Rect::FromPositionSize({510.0f, 1155.0f}, {190.0f, 48.0f})},
+			{Math::Rect::FromPositionSize({800.0f, 1025.0f}, {210.0f, 48.0f})},
+			{Math::Rect::FromPositionSize({1105.0f, 895.0f}, {195.0f, 48.0f})},
+			{Math::Rect::FromPositionSize({1390.0f, 765.0f}, {205.0f, 48.0f})},
+			{Math::Rect::FromPositionSize({1690.0f, 635.0f}, {205.0f, 48.0f})},
+			{Math::Rect::FromPositionSize({1985.0f, 505.0f}, {230.0f, 48.0f})},
+			{Math::Rect::FromPositionSize({2240.0f, 410.0f}, {220.0f, 48.0f})}};
+		hazards_ = {
+			{Math::Rect::FromPositionSize({850.0f, 993.0f}, {45.0f, 32.0f})},
+			{Math::Rect::FromPositionSize({1450.0f, 733.0f}, {45.0f, 32.0f})},
+			{Math::Rect::FromPositionSize({2040.0f, 473.0f}, {45.0f, 32.0f})}};
 		coins_ = {{{295.0f, 1190.0f}}, {{580.0f, 1060.0f}}, {{875.0f, 930.0f}}, {{1180.0f, 800.0f}}, {{1465.0f, 670.0f}}, {{1765.0f, 540.0f}}, {{2090.0f, 410.0f}}};
 		player_position_ = {68.0f, 1420.0f - kPlayerHeight};
 		velocity_ = {};
@@ -388,6 +438,10 @@ private:
 		collected_coins_ = 0;
 		coin_time_ = 0.0f;
 		player_moving_ = false;
+		facing_left_ = false;
+		jump_buffer_ = 0.0f;
+		ui_refresh_elapsed_ = 0.0;
+		player_animation_->Reset();
 		started_ = false;
 		paused_ = false;
 		game_over_ = false;
@@ -396,6 +450,7 @@ private:
 		SetDisplay("pause_panel", false);
 		SetDisplay("game_over_panel", false);
 		SetDisplay("win_panel", false);
+		UpdateUi();
 	}
 
 	/// Resets the level and immediately returns to active play.
@@ -411,6 +466,8 @@ private:
 		started_ = true;
 		paused_ = false;
 		SetDisplay("start_panel", false);
+		SetDisplay("pause_panel", false);
+		UpdateUi();
 	}
 
 	/// Draws a solid-color world-space rectangle using the renderer's white texture.
@@ -437,50 +494,59 @@ private:
 	void DrawPlatform(const Platform &platform)
 	{
 		const auto &region = atlas_->GetRegion("platform");
-		float remaining = platform.width;
-		float x = platform.x;
-		while (remaining > 0.0f)
+		const float right_edge = platform.bounds.maximum.x;
+		float x = platform.bounds.minimum.x;
+		while (x < right_edge)
 		{
-			const float width = (std::min)(96.0f, remaining);
+			const float width = (std::min)(96.0f, right_edge - x);
 			SpriteCommand command;
 			region.Apply(command);
-			command.position = {x, platform.y};
+			command.position = {x, platform.bounds.minimum.y};
 			command.size = {width, 48.0f};
 			command.texture_size.x *= width / 96.0f;
 			GetSpriteBatch().Draw(command);
 			x += width;
-			remaining -= width;
 		}
+	}
+
+	/// Returns the player collision rectangle at the current position.
+	Math::Rect GetPlayerBounds() const noexcept
+	{
+		return Math::Rect::FromPositionSize(player_position_, {kPlayerWidth, kPlayerHeight});
+	}
+
+	/// Returns the player collision rectangle for a hypothetical vertical position.
+	Math::Rect GetPlayerBoundsAt(float y) const noexcept
+	{
+		return Math::Rect::FromPositionSize({player_position_.x, y}, {kPlayerWidth, kPlayerHeight});
+	}
+
+	/// Returns the collectible hitbox inset inside a coin sprite.
+	static Math::Rect GetCoinBounds(Math::Vector2 position) noexcept
+	{
+		return Math::Rect::FromPositionSize({position.x + 8.0f, position.y + 8.0f}, {24.0f, 24.0f});
 	}
 
 	/// Collects every unclaimed coin overlapping the player bounds.
 	void CollectCoins()
 	{
+		const Math::Rect player_bounds = GetPlayerBounds();
 		for (auto &coin : coins_)
 		{
-			if (coin.collected)
+			if (coin.collected || !player_bounds.Intersects(GetCoinBounds(coin.position)))
 				continue;
-			const bool overlaps =
-				player_position_.x < coin.position.x + 32.0f &&
-				player_position_.x + kPlayerWidth > coin.position.x + 8.0f &&
-				player_position_.y < coin.position.y + 32.0f &&
-				player_position_.y + kPlayerHeight > coin.position.y + 8.0f;
-			if (overlaps)
-			{
-				coin.collected = true;
-				++collected_coins_;
-			}
+			coin.collected = true;
+			++collected_coins_;
+			UpdateUi();
 		}
 	}
 
 	/// Checks the player rectangle against all hazard rectangles.
 	bool TouchesHazard() const noexcept
 	{
-		return std::any_of(hazards_.begin(), hazards_.end(), [&](const Hazard &hazard)
-						   { return player_position_.x < hazard.x + hazard.width &&
-									player_position_.x + kPlayerWidth > hazard.x &&
-									player_position_.y < hazard.y + hazard.height &&
-									player_position_.y + kPlayerHeight > hazard.y; });
+		const Math::Rect player_bounds = GetPlayerBounds();
+		return std::any_of(hazards_.begin(), hazards_.end(), [&player_bounds](const Hazard &hazard)
+						   { return player_bounds.Intersects(hazard.bounds); });
 	}
 
 	/// Removes one life and respawns the player or opens the game-over menu.
@@ -490,11 +556,14 @@ private:
 		{
 			game_over_ = true;
 			SetDisplay("game_over_panel", true);
+			UpdateUi();
 			return;
 		}
 		player_position_ = {68.0f, 1420.0f - kPlayerHeight};
 		velocity_ = {};
 		grounded_ = true;
+		jump_buffer_ = 0.0f;
+		UpdateUi();
 	}
 
 	/// Updates the document's live HUD and current overlay state.
@@ -507,14 +576,15 @@ private:
 		if (auto *element = ui_tree_->FindById("lives_value"))
 			element->SetInnerRML(std::to_string(lives_));
 		if (auto *element = ui_tree_->FindById("status_value"))
-			element->SetInnerRML(won_ ? "FINISHED" : paused_ ? "PAUSED"
-												 : started_	 ? "PLAYING"
-															 : "READY");
+			element->SetInnerRML(game_over_ ? "GAME OVER" : won_   ? "FINISHED"
+														: paused_  ? "PAUSED"
+														: started_ ? "PLAYING"
+																   : "READY");
 		const auto stats = GetFrameStats().GetSnapshot();
 		if (auto *element = ui_tree_->FindById("fps_value"))
 			element->SetInnerRML(std::to_string(static_cast<int>(stats.frames_per_second)));
 		if (auto *element = ui_tree_->FindById("frame_value"))
-			element->SetInnerRML(std::to_string(stats.cpu_frame_milliseconds).substr(0, 4) + " ms");
+			element->SetInnerRML(FormatMilliseconds(stats.cpu_frame_milliseconds));
 		if (auto *element = ui_tree_->FindById("draw_value"))
 			element->SetInnerRML(std::to_string(stats.draw_calls));
 		if (auto *element = ui_tree_->FindById("vertex_value"))
@@ -522,7 +592,7 @@ private:
 		if (auto *element = ui_tree_->FindById("texture_value"))
 			element->SetInnerRML(std::to_string(stats.texture_switches));
 		if (auto *element = ui_tree_->FindById("gpu_value"))
-			element->SetInnerRML(std::to_string(stats.gpu_frame_milliseconds).substr(0, 4) + " ms");
+			element->SetInnerRML(FormatMilliseconds(stats.gpu_frame_milliseconds));
 	}
 
 	/// Shows or hides one overlay element by its BUI ID.
@@ -551,6 +621,8 @@ private:
 	ActionListener restart_listener_;
 	std::unique_ptr<UI::BuiTree> ui_tree_;
 	double coin_time_ = 0.0;
+	double ui_refresh_elapsed_ = 0.0;
+	float jump_buffer_ = 0.0f;
 	std::uint32_t lives_ = 3;
 	std::uint32_t collected_coins_ = 0;
 	bool grounded_ = false;
@@ -559,6 +631,7 @@ private:
 	bool game_over_ = false;
 	bool won_ = false;
 	bool player_moving_ = false;
+	bool facing_left_ = false;
 };
 
 /// Starts the game and records any startup or runtime failures beside the executable.

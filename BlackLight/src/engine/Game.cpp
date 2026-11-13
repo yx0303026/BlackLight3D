@@ -45,7 +45,7 @@ namespace BlackLight::Engine
 	void Game::OnStarting() { impl_->clock.Reset(); }
 	/// Starts the CPU frame and clears frame-scoped rendering counters.
 	void Game::OnFrameTimingStarted() { impl_->stats.BeginFrame(); }
-	/// Ends CPU timing after the frame has been presented.
+	/// Ends CPU timing before presentation waits for the display.
 	void Game::OnFrameTimingFinished() { impl_->stats.EndFrame(); }
 	/// Samples time and dispatches variable and fixed gameplay updates.
 	void Game::OnUpdate()

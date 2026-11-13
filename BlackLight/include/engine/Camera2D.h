@@ -6,7 +6,7 @@
 namespace BlackLight::Engine
 {
 	/// Defines a 2D camera with a pixel viewport and world-space zoom.
-	class Camera2D final
+	class BLACKLIGHT_API Camera2D final
 	{
 	public:
 		/// Sets the camera center in world coordinates.

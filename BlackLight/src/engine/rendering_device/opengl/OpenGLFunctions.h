@@ -126,6 +126,7 @@ namespace BlackLight::Engine::Rendering::Detail
 		using DrawElementsProc = void(APIENTRY *)(GLenum, GLsizei, GLenum, const void *);
 		using DrawElementsBaseVertexProc = void(APIENTRY *)(GLenum, GLsizei, GLenum, const void *, GLint);
 		using ActiveTextureProc = void(APIENTRY *)(GLenum);
+		using ClientActiveTextureProc = void(APIENTRY *)(GLenum);
 		using GenSamplersProc = void(APIENTRY *)(GLsizei, GLuint *);
 		using SamplerParameteriProc = void(APIENTRY *)(GLuint, GLenum, GLint);
 		using BindSamplerProc = void(APIENTRY *)(GLuint, GLuint);
@@ -190,6 +191,7 @@ namespace BlackLight::Engine::Rendering::Detail
 	X(DrawElements, glDrawElements) \
 	X(DrawElementsBaseVertex, glDrawElementsBaseVertex) \
 	X(ActiveTexture, glActiveTexture) \
+	X(ClientActiveTexture, glClientActiveTexture) \
 	X(GenSamplers, glGenSamplers) \
 	X(SamplerParameteri, glSamplerParameteri) \
 	X(BindSampler, glBindSampler) \

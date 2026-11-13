@@ -13,6 +13,7 @@ from `Window`; games derive from `Game` and implement `OnRender(GameTime)`.
 - `Ecs.h/.cpp`：`World` 使用实体代际编号避免悬空句柄，组件按 `type_index` 分池。`Each<A, B>` 在一条遍历中访问满足组件集合的实体。
 - `Content.h/.cpp`：`ContentManager` 以内容根目录为边界，缓存不可变二进制和 UTF-8 文本资产，适合在游戏初始化或后台加载阶段复用。
 - `Logger.h/.cpp`：`Logger` 是进程级、线程安全的日志器，支持级别过滤、控制台输出、可选日志文件和自定义 sink。`BL_LOG_INFO("Category") << ...` 宏在级别被过滤时不会构造消息。
+- `Math.h`、`math/*.h`：纯头文件的向量、矩阵、四元数、颜色与几何库，全部为可直接复制的值类型，详见[数学库](#数学库)。
 - `SpriteBatch.h/.cpp`：`SpriteBatch` 收集 2D 命令，并按纹理或深度排序后交给宿主回调。实际 GPU 纹理和顶点上传不进入 SDK ABI。
 - `Game.h/.cpp`：`Game` 统一后端初始化、输入采样、可变更新、固定更新、渲染、呈现和退出生命周期。
 
@@ -49,6 +50,37 @@ BlackLight::Engine::Logger::Get().SetMinimumLevel(BlackLight::Engine::LogLevel::
 BL_LOG_INFO("Render") << "GPU backend initialized: " << name;
 BL_LOG_ERROR("Content") << "Missing asset: " << path;
 ```
+
+## 数学库
+
+`engine/Math.h` 是纯头文件工具集，`BlackLight::Math` 下的类型均为可平凡复制的值类型，可直接作为 ECS 组件、常量表达式或数组元素使用，不经过 DLL 边界。
+
+- **标量**：`ToRadians`、`ToDegrees`、`Clamp`、`Clamp01`、`Lerp`、`Sign`、`Abs`、`Approximately`，以及 `kPi`、`kHalfPi`、`kTwoPi`、`kEpsilon` 等常量。
+- **向量**：`Vector2`、`Vector3`、`Vector4`，提供点积、叉积、长度、距离、归一化、`Lerp`、`Perpendicular` 与逐分量算术。
+- **颜色**：`Color` 支持 `FromRgba8`、`FromHex`、`ToRgba8`、`Modulate`（分量相乘）、`Lerp` 和基于直通 alpha 的 `Blend`。
+- **矩阵**：`Matrix3`、`Matrix4` 为行主序、行向量约定，点变换写作 `point * matrix`，平移位于最后一行。提供乘法、转置、行列式、通用求逆、点/方向变换，以及平移、缩放、欧拉角、轴角、`LookAt`、透视和正交投影工厂。
+- **旋转**：`Quaternion` 支持轴角、`FromYawPitchRoll`（先 Z 后 X 再 Y）、与旋转矩阵互转、`Rotate`、`Slerp` 和逆旋转；`operator*` 的左操作数先旋转，与 `Matrix4::operator*` 的顺序一致。
+- **几何**：`Rect`、`AABB`、`Sphere`、`Plane`、`Ray`、`Frustum`，提供包含、重叠、射线求交、平面归一化与投影、视锥提取和球/盒的保守剔除。
+- **相机**：`Matrix4::CreateLookAt` 生成视图矩阵，`CreatePerspectiveFieldOfView` / `CreatePerspective` / `CreateOrthographic` / `CreateOrthographicOffCenter` 生成投影矩阵，`Frustum::FromViewProjection(view * projection)` 提取六个裁剪平面。
+- **深度约定**：透视投影使用右手视图（-Z 为前方），正交投影使用 +Z，二者均把可见深度映射到 `[0, 1]`，与 D3D11 一致；OpenGL 后端上传 uniform 时按 `GL_TRUE` 转置。
+
+```cpp
+using namespace BlackLight::Math;
+
+const Rect player = Rect::FromPositionSize({68.0f, 1360.0f}, {40.0f, 60.0f});
+const Rect coin = Rect::FromCenterSize({100.0f, 1350.0f}, {24.0f, 24.0f});
+if (player.Intersects(coin))
+    ++score;
+
+const Matrix4 view = Matrix4::CreateLookAt({0.0f, 2.0f, 6.0f}, {0.0f, 2.0f, 0.0f}, {0.0f, 1.0f, 0.0f});
+const Matrix4 projection =
+    Matrix4::CreatePerspectiveFieldOfView(ToRadians(60.0f), 16.0f / 9.0f, 0.1f, 1000.0f);
+const Frustum frustum = Frustum::FromViewProjection(view * projection);
+if (frustum.Contains(world_position))
+    draw_mesh();
+```
+
+数值回归覆盖矩阵乘法/求逆、透视与正交投影、四元数与矩阵互转、几何求交和视锥提取，位于 `BlackLight/tests/MathTests.cpp`。
 
 ## 渲染设备
 

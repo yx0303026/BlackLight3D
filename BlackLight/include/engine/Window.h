@@ -61,7 +61,7 @@ namespace BlackLight::Engine
 		virtual void OnStarting();
 		/// Starts per-frame metrics before the native event pump.
 		virtual void OnFrameTimingStarted();
-		/// Finishes per-frame metrics after presentation.
+		/// Finishes CPU work metrics before presentation can wait for vertical sync.
 		virtual void OnFrameTimingFinished();
 		/// Updates application state once per frame.
 		virtual void OnUpdate();

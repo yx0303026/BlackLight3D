@@ -339,10 +339,8 @@ namespace BlackLight::Engine::Rendering::Detail
 			RECT rectangle{};
 			if (window && GetClientRect(window, &rectangle))
 			{
-				width = IsIconic(window) ? 0u :
-					static_cast<std::uint32_t>((std::max)(0L, rectangle.right - rectangle.left));
-				height = IsIconic(window) ? 0u :
-					static_cast<std::uint32_t>((std::max)(0L, rectangle.bottom - rectangle.top));
+				width = IsIconic(window) ? 0u : static_cast<std::uint32_t>((std::max)(0L, rectangle.right - rectangle.left));
+				height = IsIconic(window) ? 0u : static_cast<std::uint32_t>((std::max)(0L, rectangle.bottom - rectangle.top));
 			}
 			const UINT current_dpi = GetWindowDpi(window);
 			if (ui_context)
@@ -384,8 +382,7 @@ namespace BlackLight::Engine::Rendering::Detail
 			const auto extensions_proc = FindOpenGLFunction<ExtensionsProc>("wglGetExtensionsStringARB");
 			const char *extensions = extensions_proc ? extensions_proc(dc) : nullptr;
 			const bool robust_supported = extensions &&
-				(" " + std::string(extensions) + " ").find(
-					" WGL_ARB_create_context_robustness ") != std::string::npos;
+										  (" " + std::string(extensions) + " ").find(" WGL_ARB_create_context_robustness ") != std::string::npos;
 			if (!create)
 				throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL",
 										 "WGL_ARB_create_context is required for OpenGL 3.3");
@@ -534,68 +531,66 @@ namespace BlackLight::Engine::Rendering::Detail
 			}
 			else
 			{
-			WNDCLASSW window_class{};
-			window_class.style = CS_OWNDC;
-			window_class.lpfnWndProc = DefWindowProcW;
-			window_class.hInstance = GetModuleHandleW(nullptr);
-			window_class.lpszClassName = kWindowClass;
-			window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
-			RegisterClassW(&window_class);
-			const std::wstring title = RmlWin32::ConvertToUTF16(config.surface.title);
-			const DWORD style = config.surface.resizable ? WS_OVERLAPPEDWINDOW : (WS_OVERLAPPEDWINDOW & ~WS_SIZEBOX & ~WS_MAXIMIZEBOX);
-			impl_->window = CreateWindowExW(
-				0, kWindowClass, title.c_str(), style,
-				CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
-			if (!impl_->window)
-				throw RenderingException(RenderingError::WindowCreationFailed, "OpenGL", "CreateWindowExW failed");
-			impl_->owns_window = true;
-			RECT bounds{0, 0, static_cast<LONG>(config.surface.width), static_cast<LONG>(config.surface.height)};
-			AdjustClientBounds(bounds, style, GetWindowDpi(impl_->window));
-			SetWindowPos(impl_->window, nullptr, 0, 0, bounds.right - bounds.left, bounds.bottom - bounds.top,
-						 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+				WNDCLASSW window_class{};
+				window_class.style = CS_OWNDC;
+				window_class.lpfnWndProc = DefWindowProcW;
+				window_class.hInstance = GetModuleHandleW(nullptr);
+				window_class.lpszClassName = kWindowClass;
+				window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
+				RegisterClassW(&window_class);
+				const std::wstring title = RmlWin32::ConvertToUTF16(config.surface.title);
+				const DWORD style = config.surface.resizable ? WS_OVERLAPPEDWINDOW : (WS_OVERLAPPEDWINDOW & ~WS_SIZEBOX & ~WS_MAXIMIZEBOX);
+				impl_->window = CreateWindowExW(
+					0, kWindowClass, title.c_str(), style,
+					CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+				if (!impl_->window)
+					throw RenderingException(RenderingError::WindowCreationFailed, "OpenGL", "CreateWindowExW failed");
+				impl_->owns_window = true;
+				RECT bounds{0, 0, static_cast<LONG>(config.surface.width), static_cast<LONG>(config.surface.height)};
+				AdjustClientBounds(bounds, style, GetWindowDpi(impl_->window));
+				SetWindowPos(impl_->window, nullptr, 0, 0, bounds.right - bounds.left, bounds.bottom - bounds.top,
+							 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 			}
 
 			if (!SetWindowSubclass(impl_->window, Impl::WindowProcedure, reinterpret_cast<UINT_PTR>(impl_.get()),
-							   reinterpret_cast<DWORD_PTR>(impl_.get())))
+								   reinterpret_cast<DWORD_PTR>(impl_.get())))
 				throw RenderingException(RenderingError::WindowCreationFailed, "OpenGL", "window input handler setup failed");
 			impl_->subclassed = true;
 
-		impl_->dc = GetDC(impl_->window);
-		if (!impl_->dc)
-			throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL", "GetDC failed");
-		PIXELFORMATDESCRIPTOR descriptor{};
-		descriptor.nSize = sizeof(descriptor);
-		descriptor.nVersion = 1;
-		descriptor.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-		descriptor.iPixelType = PFD_TYPE_RGBA;
-		descriptor.cColorBits = 32;
-		descriptor.cAlphaBits = 8;
-		descriptor.cDepthBits = 24;
-		descriptor.cStencilBits = 8;
-		descriptor.iLayerType = PFD_MAIN_PLANE;
-		const int pixel_format = ChoosePixelFormat(impl_->dc, &descriptor);
-		if (!pixel_format || !SetPixelFormat(impl_->dc, pixel_format, &descriptor))
-			throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL", "pixel format setup failed");
+			impl_->dc = GetDC(impl_->window);
+			if (!impl_->dc)
+				throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL", "GetDC failed");
+			PIXELFORMATDESCRIPTOR descriptor{};
+			descriptor.nSize = sizeof(descriptor);
+			descriptor.nVersion = 1;
+			descriptor.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+			descriptor.iPixelType = PFD_TYPE_RGBA;
+			descriptor.cColorBits = 32;
+			descriptor.cAlphaBits = 8;
+			descriptor.cDepthBits = 24;
+			descriptor.cStencilBits = 8;
+			descriptor.iLayerType = PFD_MAIN_PLANE;
+			const int pixel_format = ChoosePixelFormat(impl_->dc, &descriptor);
+			if (!pixel_format || !SetPixelFormat(impl_->dc, pixel_format, &descriptor))
+				throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL", "pixel format setup failed");
 			impl_->CreateContext();
 			RECT client{};
 			GetClientRect(impl_->window, &client);
-			impl_->width = IsIconic(impl_->window) ? 0u :
-				static_cast<std::uint32_t>((std::max)(0L, client.right - client.left));
-			impl_->height = IsIconic(impl_->window) ? 0u :
-				static_cast<std::uint32_t>((std::max)(0L, client.bottom - client.top));
-		if (config.enable_ui)
-		{
-			impl_->ui_renderer = std::make_unique<OpenGLUiRenderer>();
-			impl_->ui_input = std::make_unique<TextInputMethodEditor_Win32>();
-			impl_->ui_runtime = UiRuntime::Acquire("OpenGL");
-			impl_->ui_runtime->system.SetWindow(impl_->window);
-			const std::string name = "blacklight-" + std::to_string(reinterpret_cast<std::uintptr_t>(impl_.get()));
-			impl_->ui_context = Rml::CreateContext(name,
-												   {static_cast<int>(impl_->width), static_cast<int>(impl_->height)}, impl_->ui_renderer.get(), impl_->ui_input.get());
-			if (!impl_->ui_context)
-				throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL", "RmlUi context creation failed");
-		}
-		impl_->SynchronizeSurface();
+			impl_->width = IsIconic(impl_->window) ? 0u : static_cast<std::uint32_t>((std::max)(0L, client.right - client.left));
+			impl_->height = IsIconic(impl_->window) ? 0u : static_cast<std::uint32_t>((std::max)(0L, client.bottom - client.top));
+			if (config.enable_ui)
+			{
+				impl_->ui_renderer = std::make_unique<OpenGLUiRenderer>();
+				impl_->ui_input = std::make_unique<TextInputMethodEditor_Win32>();
+				impl_->ui_runtime = UiRuntime::Acquire("OpenGL");
+				impl_->ui_runtime->system.SetWindow(impl_->window);
+				const std::string name = "blacklight-" + std::to_string(reinterpret_cast<std::uintptr_t>(impl_.get()));
+				impl_->ui_context = Rml::CreateContext(name,
+													   {static_cast<int>(impl_->width), static_cast<int>(impl_->height)}, impl_->ui_renderer.get(), impl_->ui_input.get());
+				if (!impl_->ui_context)
+					throw RenderingException(RenderingError::DeviceCreationFailed, "OpenGL", "RmlUi context creation failed");
+			}
+			impl_->SynchronizeSurface();
 			if (impl_->owns_window)
 				ShowWindow(impl_->window, SW_SHOW);
 		}
@@ -684,8 +679,8 @@ namespace BlackLight::Engine::Rendering::Detail
 				: GL_TEXTURE_2D_VALUE;
 		impl_->functions.BindFramebuffer(GL_FRAMEBUFFER_VALUE, framebuffer);
 		impl_->functions.FramebufferTexture2D(GL_FRAMEBUFFER_VALUE, GL_DEPTH_STENCIL_ATTACHMENT_VALUE,
-											 depth_texture_target,
-											 depth_target ? static_cast<GLuint>(depth_target->impl_->native) : 0, 0);
+											  depth_texture_target,
+											  depth_target ? static_cast<GLuint>(depth_target->impl_->native) : 0, 0);
 		if (impl_->functions.CheckFramebufferStatus(GL_FRAMEBUFFER_VALUE) != GL_FRAMEBUFFER_COMPLETE_VALUE)
 			throw RenderingException(RenderingError::SubmissionFailed, "OpenGL", "render target framebuffer is incomplete");
 		impl_->current_framebuffer = framebuffer;
@@ -730,8 +725,7 @@ namespace BlackLight::Engine::Rendering::Detail
 		impl_->functions.BindBuffer(GL_ARRAY_BUFFER_VALUE, 0);
 		impl_->functions.BindBuffer(GL_ELEMENT_ARRAY_BUFFER_VALUE, 0);
 		impl_->functions.ActiveTexture(GL_TEXTURE0_VALUE);
-		const auto client_active = FindOpenGLFunction<OpenGLFunctions::ActiveTextureProc>("glClientActiveTexture");
-		client_active(GL_TEXTURE0_VALUE);
+		impl_->functions.ClientActiveTexture(GL_TEXTURE0_VALUE);
 		glGetIntegerv(GL_SAMPLER_BINDING_VALUE_LOCAL, &sampler);
 		impl_->functions.BindSampler(0, 0);
 		for (const GLenum mode : {GL_PROJECTION, GL_TEXTURE, GL_MODELVIEW})
@@ -761,7 +755,7 @@ namespace BlackLight::Engine::Rendering::Detail
 			glPopAttrib();
 			impl_->functions.BindSampler(0, static_cast<GLuint>(sampler));
 			impl_->functions.ActiveTexture(static_cast<GLenum>(active_texture));
-			client_active(static_cast<GLenum>(client_active_texture));
+			impl_->functions.ClientActiveTexture(static_cast<GLenum>(client_active_texture));
 			impl_->functions.BindVertexArray(static_cast<GLuint>(vertex_array));
 			impl_->functions.BindBuffer(GL_ARRAY_BUFFER_VALUE, static_cast<GLuint>(array_buffer));
 			impl_->functions.BindBuffer(GL_ELEMENT_ARRAY_BUFFER_VALUE, static_cast<GLuint>(element_buffer));
@@ -780,7 +774,7 @@ namespace BlackLight::Engine::Rendering::Detail
 		glPopAttrib();
 		impl_->functions.BindSampler(0, static_cast<GLuint>(sampler));
 		impl_->functions.ActiveTexture(static_cast<GLenum>(active_texture));
-		client_active(static_cast<GLenum>(client_active_texture));
+		impl_->functions.ClientActiveTexture(static_cast<GLenum>(client_active_texture));
 		impl_->functions.BindVertexArray(static_cast<GLuint>(vertex_array));
 		impl_->functions.BindBuffer(GL_ARRAY_BUFFER_VALUE, static_cast<GLuint>(array_buffer));
 		impl_->functions.BindBuffer(GL_ELEMENT_ARRAY_BUFFER_VALUE, static_cast<GLuint>(element_buffer));
@@ -831,7 +825,7 @@ namespace BlackLight::Engine::Rendering::Detail
 			{
 				impl_->ui_runtime->system.SetWindow(impl_->window);
 				impl_->ui_renderer->SetViewport(static_cast<int>(impl_->width),
-												 static_cast<int>(impl_->height));
+												static_cast<int>(impl_->height));
 				Rml::ReleaseFontResources();
 			}
 			impl_->SynchronizeSurface();
@@ -963,8 +957,8 @@ namespace BlackLight::Engine::Rendering::Detail
 				functions.EnableVertexAttribArray(attribute.location);
 				if (attribute.format == ResourceFormat::R16Uint || attribute.format == ResourceFormat::R32Uint)
 					functions.VertexAttribIPointer(attribute.location, static_cast<GLint>(attribute.component_count),
-													scalar_type, static_cast<GLsizei>(vertex_stride),
-													reinterpret_cast<const void *>(address));
+												   scalar_type, static_cast<GLsizei>(vertex_stride),
+												   reinterpret_cast<const void *>(address));
 				else
 					functions.VertexAttribPointer(attribute.location, static_cast<GLint>(attribute.component_count),
 												  scalar_type, attribute.format == ResourceFormat::R8Unorm ? GL_TRUE : GL_FALSE,
@@ -994,7 +988,7 @@ namespace BlackLight::Engine::Rendering::Detail
 			for (const auto &entry : commands.impl_->commands)
 			{
 				std::visit([&](const auto &command)
-				{
+						   {
 					using T = std::decay_t<decltype(command)>;
 					if constexpr (std::is_same_v<T, CommandList::Impl::PipelineCommand>)
 					{
@@ -1164,8 +1158,7 @@ namespace BlackLight::Engine::Rendering::Detail
 														 static_cast<GLsizei>(command.count),
 														 index_format == ResourceFormat::R16Uint ? GL_UNSIGNED_SHORT_VALUE : GL_UNSIGNED_INT_VALUE,
 														 reinterpret_cast<const void *>(byte_offset), command.vertex_offset);
-					}
-				}, entry);
+					} }, entry);
 			}
 		}
 		catch (const RenderingException &)
@@ -1219,9 +1212,7 @@ namespace BlackLight::Engine::Rendering::Detail
 			resource->native = buffer;
 			const auto delete_buffers = impl_->functions.DeleteBuffers;
 			resource->deletion = impl_->lifetime->Register([delete_buffers, buffer]()
-			{
-				delete_buffers(1, &buffer);
-			});
+														   { delete_buffers(1, &buffer); });
 			result.impl_ = std::move(resource);
 		}
 		catch (...)
@@ -1424,11 +1415,11 @@ namespace BlackLight::Engine::Rendering::Detail
 				impl_->functions.TexParameteri(texture_target, GL_TEXTURE_MIN_FILTER_LOCAL, minimum_filter);
 				impl_->functions.TexParameteri(texture_target, GL_TEXTURE_MAG_FILTER_LOCAL, magnification_filter);
 				impl_->functions.TexParameteri(texture_target, GL_TEXTURE_WRAP_S_LOCAL,
-												MapAddressMode(description.address_u));
+											   MapAddressMode(description.address_u));
 				impl_->functions.TexParameteri(texture_target, GL_TEXTURE_WRAP_T_LOCAL,
-												MapAddressMode(description.address_v));
+											   MapAddressMode(description.address_v));
 				impl_->functions.TexParameteri(texture_target, GL_TEXTURE_MAX_LEVEL_VALUE,
-												static_cast<GLint>(description.mip_levels - 1));
+											   static_cast<GLint>(description.mip_levels - 1));
 				impl_->functions.SamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER_LOCAL, minimum_filter);
 				impl_->functions.SamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER_LOCAL, magnification_filter);
 				impl_->functions.SamplerParameteri(sampler, GL_TEXTURE_WRAP_S_LOCAL, MapAddressMode(description.address_u));
@@ -1441,7 +1432,7 @@ namespace BlackLight::Engine::Rendering::Detail
 					throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "framebuffer allocation failed");
 				impl_->functions.BindFramebuffer(GL_FRAMEBUFFER_VALUE, framebuffer);
 				impl_->functions.FramebufferTexture2D(GL_FRAMEBUFFER_VALUE, GL_COLOR_ATTACHMENT0_VALUE,
-													 texture_target, texture, 0);
+													  texture_target, texture, 0);
 				if (impl_->functions.CheckFramebufferStatus(GL_FRAMEBUFFER_VALUE) != GL_FRAMEBUFFER_COMPLETE_VALUE)
 					throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "color texture framebuffer is incomplete");
 				impl_->functions.BindFramebuffer(GL_FRAMEBUFFER_VALUE, 0);
@@ -1465,13 +1456,12 @@ namespace BlackLight::Engine::Rendering::Detail
 			const auto delete_samplers = impl_->functions.DeleteSamplers;
 			const auto delete_framebuffers = impl_->functions.DeleteFramebuffers;
 			resource->deletion = impl_->lifetime->Register([delete_textures, delete_samplers,
-															 delete_framebuffers, texture, sampler, framebuffer]()
-			{
+															delete_framebuffers, texture, sampler, framebuffer]()
+														   {
 				delete_textures(1, &texture);
 				delete_samplers(1, &sampler);
 				if (framebuffer)
-					delete_framebuffers(1, &framebuffer);
-			});
+					delete_framebuffers(1, &framebuffer); });
 			result.impl_ = std::move(resource);
 			return result;
 		}
@@ -1585,8 +1575,8 @@ namespace BlackLight::Engine::Rendering::Detail
 						throw RenderingException(RenderingError::ResourceCreationFailed, "OpenGL", "vertex attribute locations must be unique");
 				const std::string fallback = "a" + std::to_string(attribute.location);
 				const char *semantic = attribute.semantic_name && *attribute.semantic_name
-										  ? attribute.semantic_name
-										  : fallback.c_str();
+										   ? attribute.semantic_name
+										   : fallback.c_str();
 				impl_->functions.BindAttribLocation(program, attribute.location, semantic);
 			}
 			impl_->functions.LinkProgram(program);
@@ -1658,8 +1648,8 @@ namespace BlackLight::Engine::Rendering::Detail
 				resource->attribute_semantics.reserve(description.vertex_attribute_count);
 				for (std::uint32_t index = 0; index < description.vertex_attribute_count; ++index)
 					resource->attribute_semantics.emplace_back(description.vertex_attributes[index].semantic_name
-																 ? description.vertex_attributes[index].semantic_name
-																 : "");
+																   ? description.vertex_attributes[index].semantic_name
+																   : "");
 			}
 			resource->device_id = impl_->device_id;
 			resource->backend = RenderingBackend::OpenGL;
@@ -1669,10 +1659,9 @@ namespace BlackLight::Engine::Rendering::Detail
 			const auto delete_program = impl_->functions.DeleteProgram;
 			const auto delete_vertex_arrays = impl_->functions.DeleteVertexArrays;
 			resource->deletion = impl_->lifetime->Register([delete_program, delete_vertex_arrays, program, vertex_array]()
-			{
+														   {
 				delete_program(program);
-				delete_vertex_arrays(1, &vertex_array);
-			});
+				delete_vertex_arrays(1, &vertex_array); });
 			impl_->functions.DeleteShader(vertex_shader);
 			impl_->functions.DeleteShader(fragment_shader);
 			GraphicsPipeline result;
