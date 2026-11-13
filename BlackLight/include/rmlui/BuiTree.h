@@ -5,6 +5,24 @@
 #include <string_view>
 #include <unordered_map>
 
+// Transparent hash and equality for string_view lookup in unordered_map
+namespace BlackLight::UI::detail
+{
+	struct StringHash
+	{
+		using is_transparent = void;
+		[[nodiscard]] size_t operator()(const char* txt) const { return std::hash<std::string_view>{}(txt); }
+		[[nodiscard]] size_t operator()(std::string_view txt) const { return std::hash<std::string_view>{}(txt); }
+		[[nodiscard]] size_t operator()(const std::string& txt) const { return std::hash<std::string>{}(txt); }
+	};
+
+	struct StringEqual
+	{
+		using is_transparent = void;
+		[[nodiscard]] bool operator()(std::string_view lhs, std::string_view rhs) const { return lhs == rhs; }
+	};
+}
+
 namespace Rml
 {
 	class Context;
@@ -62,7 +80,7 @@ namespace BlackLight::UI
 		BuiTree();
 
 		Rml::ElementDocument *document_ = nullptr;
-		std::unordered_map<std::string, Rml::Element *> elements_by_id_;
+		std::unordered_map<std::string, Rml::Element *, detail::StringHash, detail::StringEqual> elements_by_id_;
 	};
 
 } // namespace BlackLight::UI

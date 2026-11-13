@@ -95,6 +95,7 @@ set(BLACKLIGHT_ENGINE_SOURCES
 	src/rmlui/BuiDocument.cpp
 	src/rmlui/BuiLoader.cpp
 	src/rmlui/BuiTree.cpp
+	src/rmlui/BuiCustomElement.cpp
 	src/engine/Camera2D.cpp
 	src/engine/Content.cpp
 	src/engine/Ecs.cpp
@@ -132,7 +133,8 @@ add_library(blacklight_engine SHARED ${BLACKLIGHT_ENGINE_SOURCES}
 	include/engine/collision/Capsule.h
 	include/engine/collision
 	include/engine/collision/Circle2D.h
-	include/engine/collision/Poly.h)
+	include/engine/collision/Poly.h
+	include/rmlui/BuiCustomElement.h)
 add_library(blacklight_engine_static STATIC ${BLACKLIGHT_ENGINE_SOURCES})
 add_library(BlackLight::Engine ALIAS blacklight_engine)
 add_library(BlackLight::EngineStatic ALIAS blacklight_engine_static)

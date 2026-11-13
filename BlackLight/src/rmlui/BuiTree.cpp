@@ -21,7 +21,9 @@ namespace BlackLight::UI
 		}
 
 		/// Builds element ID mapping after RmlUi tree creation.
-		void MapElementIds(Rml::Element &element, std::unordered_map<std::string, Rml::Element *> &elements_by_id)
+		template <typename Hash = std::hash<std::string>, typename Equal = std::equal_to<std::string>>
+		void MapElementIds(Rml::Element &element,
+						   std::unordered_map<std::string, Rml::Element *, Hash, Equal> &elements_by_id)
 		{
 			const std::string &id = element.GetId();
 			if (!id.empty())
@@ -73,9 +75,11 @@ namespace BlackLight::UI
 			return false;
 		}
 
-		if (!new_tree->document_->GetNumChildren())
+		// Verify document has a body element
+		Rml::Element* body = new_tree->document_->GetElementById("body");
+		if (!body && new_tree->document_->GetNumChildren() == 0)
 		{
-			SetBuildError(error, "Failed to load layout HTML - document has no children");
+			SetBuildError(error, "Failed to load layout HTML - document has no body");
 			new_tree->Close();
 			return false;
 		}
@@ -97,10 +101,16 @@ namespace BlackLight::UI
 	/// Resolves an element from the document's initial ID index.
 	Rml::Element *BuiTree::FindById(std::string_view id) const
 	{
+		// C++17 unordered_map lookup requires the map's key type.
 		auto it = elements_by_id_.find(std::string(id));
 		if (it != elements_by_id_.end())
 		{
-			return it->second;
+			// Verify pointer is still valid by checking if element is still in document
+			Rml::Element* elem = it->second;
+			if (elem && elem->GetOwnerDocument() == document_)
+			{
+				return elem;
+			}
 		}
 		return nullptr;
 	}

@@ -65,7 +65,8 @@ namespace BlackLight::UI
 		}
 
 		/// Reads a container or layout tag without consuming its inner content.
-		bool ParseTag(ParseState &state, std::string &tag_name, bool &is_closing)
+		/// Returns tag name as string_view to avoid allocation until necessary.
+		bool ParseTag(ParseState &state, std::string_view &tag_name, bool &is_closing)
 		{
 			if (!SkipWhitespace(state) || state.content[state.position] != '<')
 			{
@@ -88,7 +89,7 @@ namespace BlackLight::UI
 				return false;
 			}
 
-			std::size_t tag_start = state.position;
+			const std::size_t tag_start = state.position;
 			while (state.position < state.content.size() &&
 				   (std::isalnum(static_cast<unsigned char>(state.content[state.position])) ||
 					state.content[state.position] == '_' ||
@@ -103,7 +104,7 @@ namespace BlackLight::UI
 				return false;
 			}
 
-			tag_name = std::string(state.content.substr(tag_start, state.position - tag_start));
+			tag_name = state.content.substr(tag_start, state.position - tag_start);
 
 			// Skip attributes and find closing >
 			while (state.position < state.content.size() && state.content[state.position] != '>')
@@ -125,7 +126,7 @@ namespace BlackLight::UI
 		bool ExtractSection(ParseState &state, const std::string &section_name, std::string &content)
 		{
 			// Find opening tag
-			std::string tag_name;
+			std::string_view tag_name;
 			bool is_closing = false;
 
 			while (state.position < state.content.size())
@@ -144,7 +145,7 @@ namespace BlackLight::UI
 				if (ToLower(tag_name) == ToLower(section_name) && !is_closing)
 				{
 					// Found opening tag, extract content until closing tag
-					std::size_t content_start = state.position;
+					const std::size_t content_start = state.position;
 
 					while (state.position < state.content.size())
 					{
@@ -185,24 +186,24 @@ namespace BlackLight::UI
 		bool ParseBuiXml(std::string_view bui_content, std::string &styles, std::string &layout,
 						 BuiLoadError &error)
 		{
-			ParseState state{bui_content, 0, {}};
+			ParseState styles_state{bui_content, 0, {}};
+			ParseState layout_state{bui_content, 0, {}};
 
 			std::string styles_content;
 			std::string layout_content;
 
 			// Parse <styles> section
-			if (!ExtractSection(state, "styles", styles_content))
+			if (!ExtractSection(styles_state, "styles", styles_content))
 			{
-				error.line = GetLineNumber(bui_content, state.position);
+				error.line = GetLineNumber(bui_content, styles_state.position);
 				error.message = "Missing or unclosed <styles> section";
 				return false;
 			}
 
-			// Parse <layout> section
-			state.position = 0; // Reset to find layout
-			if (!ExtractSection(state, "layout", layout_content))
+			// Parse <layout> section (independent scan from start)
+			if (!ExtractSection(layout_state, "layout", layout_content))
 			{
-				error.line = GetLineNumber(bui_content, state.position);
+				error.line = GetLineNumber(bui_content, layout_state.position);
 				error.message = "Missing or unclosed <layout> section";
 				return false;
 			}
