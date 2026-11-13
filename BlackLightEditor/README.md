@@ -148,17 +148,18 @@ to the newest cached SDK when GitHub cannot be reached.
 | `BlackLightGame` | Executable | `Engine::Game` loop with variable and fixed updates, `assets/` content root |
 | `BlockLightUIInject` | DLL | Exported plugin API, `.def` export table, and `DllMain` shell |
 
-Template version `1.1.0` creates `ui/Main.bui` with a single centered `Hello Light`
+Template version `1.2.0` creates `ui/Main.bui` with a single centered `Hello Light`
 button. WindowsApp and BlackLightGame enable UI, load the Windows Arial font, and
 embed this document into the executable through the SDK's `blacklight_embed_bui`
 helper. Editing the document and rebuilding updates the interface without a runtime
 UI directory. The document is created only once, so scaffolding updates preserve
 user changes. Existing projects keep their source and UI files during an update.
 
-The default interface currently renders with OpenGL. DirectX backends have no
-engine UI adapter yet, so the generated host logs a warning and continues without
-UI. The injection template includes the same document for a host overlay to load;
-the DLL shell does not create its own window or install rendering hooks.
+The default interface renders with the engine's OpenGL or Direct3D 11 UI adapter.
+DirectX 12 is selectable for compatibility but currently maps to the Direct3D 11
+backend because the engine does not expose a DX12 device yet. The injection
+template includes the same document for a host overlay to load; the DLL shell does
+not create its own window or install rendering hooks.
 
 Every project records the prebuilt engine SDK release it was generated against and
 is created with this layout:
@@ -182,7 +183,7 @@ namespace = MyGame
 graphics = OpenGL
 engine_root = C:/Users/you/AppData/Local/BlackLightEditor/Engine/v0.0.1
 engine_version = v0.0.1
-template_version = 1.1.0
+template_version = 1.2.0
 created = 2026-11-11
 dependency = BlackLight | v0.0.1 | C:/Users/you/AppData/Local/BlackLightEditor/Engine/v0.0.1
 ```

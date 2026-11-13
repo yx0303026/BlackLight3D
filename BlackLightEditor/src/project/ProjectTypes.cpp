@@ -136,10 +136,10 @@ namespace BlackLight::Editor
 		case GraphicsApi::OpenGL:
 			return "OpenGL is the reference backend and links against opengl32.";
 		case GraphicsApi::DirectX11:
-			return "Direct3D 11 is selected through the engine's Direct3D11 device.";
+			return "Direct3D 11 uses the engine's Direct3D11 device and UI adapter.";
 		case GraphicsApi::DirectX12:
-			return "DirectX 12 is not exposed by the engine yet; the generated project "
-				"uses the Direct3D 11 device until a DX12 backend lands.";
+			return "The engine does not expose a DirectX 12 device yet; this selection "
+				"uses the Direct3D 11 backend and UI adapter.";
 		}
 		return {};
 	}

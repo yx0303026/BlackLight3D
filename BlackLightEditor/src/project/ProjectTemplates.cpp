@@ -9,7 +9,7 @@ namespace BlackLight::Editor
 	namespace
 	{
 
-		constexpr const char *TemplateVersion = "1.1.0";
+		constexpr const char *TemplateVersion = "1.2.0";
 		constexpr const char *EngineVersion = "0.1.0";
 
 		/// Describes an embedded file while preserving user-owned content by default.
@@ -127,6 +127,7 @@ target_include_directories(${PROJECT_TARGET} PRIVATE "$${BLACKLIGHT_SDK_ROOT}/in
 
 target_compile_definitions(${PROJECT_TARGET} PRIVATE
 	BLACKLIGHT_STATIC
+	RMLUI_STATIC_LIB
 	BLACKLIGHT_GRAPHICS_${GRAPHICS_API_UPPER}=1
 	BLACKLIGHT_PROJECT_ID="${PROJECT_ID}"
 )
@@ -138,7 +139,11 @@ target_link_libraries(${PROJECT_TARGET} PRIVATE
 	opengl32
 	d3d11
 	dxgi
+	d3dcompiler
 	comctl32
+	windowscodecs
+	ole32
+	gdi32
 )
 
 set_target_properties(${PROJECT_TARGET} PROPERTIES
@@ -403,8 +408,9 @@ extracted `blacklight_engine_x64_release` package.
 - `build/` - generated CMake/Ninja output (ignored by Git).
 
 Edit `ui/Main.bui` and rebuild to change the default interface. The UI is embedded
-in the executable and does not depend on the working directory. OpenGL currently
-provides the engine UI adapter; DirectX backends log a warning and run without UI.
+in the executable and does not depend on the working directory. OpenGL and
+Direct3D 11 both provide engine UI adapters. A DirectX 12 selection currently
+uses the Direct3D 11 backend because the engine does not expose a DX12 device yet.
 )BLT";
 		}
 
@@ -467,6 +473,13 @@ namespace ${PROJECT_NAMESPACE}
 		{
 			(void)game_time;
 			// Variable-rate gameplay goes here.
+		}
+
+		/// Updates deterministic gameplay at the configured fixed rate.
+		void OnFixedUpdate(const BlackLight::Engine::GameTime &game_time) override
+		{
+			(void)game_time;
+			// Fixed-rate gameplay goes here.
 		}
 
 		/// Records scene draw commands before the engine renders the UI overlay.
@@ -538,11 +551,13 @@ Gameplay content is loaded from `assets/` because the generated configuration se
 
 `ui/Main.bui` displays a centered `Hello Light` button over the game scene. Edit the
 document and rebuild to update the embedded UI; no runtime UI directory is needed.
-OpenGL currently provides the engine UI adapter; DirectX backends log a warning
-and run without UI.
+OpenGL and Direct3D 11 both provide engine UI adapters. A DirectX 12 selection
+currently uses the Direct3D 11 backend because the engine does not expose a
+DX12 device yet.
 )BLT";
 		}
 
+		/// Emits the DLL build rules for the injection template.
 		const char *InjectCMakeLists()
 		{
 			return R"BLT(cmake_minimum_required(VERSION 3.25)
@@ -574,6 +589,7 @@ target_include_directories(${PROJECT_TARGET} PRIVATE
 
 target_compile_definitions(${PROJECT_TARGET} PRIVATE
 	BLACKLIGHT_STATIC
+	RMLUI_STATIC_LIB
 	BLACKLIGHT_UI_INJECT_EXPORTS=1
 	BLACKLIGHT_GRAPHICS_${GRAPHICS_API_UPPER}=1
 	BLACKLIGHT_PROJECT_ID="${PROJECT_ID}"
@@ -586,7 +602,11 @@ target_link_libraries(${PROJECT_TARGET} PRIVATE
 	opengl32
 	d3d11
 	dxgi
+	d3dcompiler
 	comctl32
+	windowscodecs
+	ole32
+	gdi32
 )
 
 set_target_properties(${PROJECT_TARGET} PROPERTIES
@@ -738,6 +758,8 @@ cmake --build --preset debug
 ```
 
 The DLL is written to `build/debug/${PROJECT_TARGET}.dll`.
+The generated target defines `RMLUI_STATIC_LIB` and links the static engine,
+RmlUi, FreeType, and the Windows libraries required by both rendering backends.
 
 ## Exports
 
