@@ -24,7 +24,7 @@ BlackLight 已完成第一阶段 1.1–1.3：OpenGL / D3D11 资源与命令提�
 | `Logger` / `Time` | ✅ 可用 | 级别过滤、文件、自定义 sink；`FrameClock` 固定步长 |
 | RmlUi / `.bui` | ✅ 双后端 | GL2 / D3D11 渲染器与 Win32 输入；Demo 菜单、HUD、暂停和结束界面 |
 | 音频 / 物理 / 脚本 / 网络 | ❌ 缺失 | 无任何实现 |
-| 测试 | ⚠️ 极少 | 仅 `LoggerTests.cpp`；渲染、ECS、内容均无测试 |
+| 测试 | ⚠️ 基础 | `LoggerTests.cpp` 与 `MathTests.cpp` 已覆盖日志和数学；渲染、ECS、内容均无测试 |
 
 > 第一阶段已完成；下一步按第二阶段补齐数学、输入与运行时服务。2D 使用方式和当前限制见 [2D 渲染指南](../docs/2d-rendering.md)。
 
@@ -208,7 +208,7 @@ BlackLight 已完成第一阶段 1.1–1.3：OpenGL / D3D11 资源与命令提�
 4. 图像解码 + 纹理上传
 5. SpriteBatch GPU 渲染器 + Camera2D
 6. 帧统计
-7. Math 补齐（并行进行，几乎无依赖）
+7. Math 补齐（✅ 已完成）
 
 ### P1（2D 游戏闭环）
 - D3D11 缩放/输入/深度补齐

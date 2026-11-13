@@ -247,7 +247,7 @@ namespace BlackLight::Math
 			const Vector3 to_target = target - eye;
 			if (to_target.LengthSquared() <= kEpsilon)
 				return Identity();
-			Vector3 forward = (to_target * -1.0f).Normalized();
+			Vector3 forward = (eye - target).Normalized();
 			Vector3 right = up.Cross(forward).Normalized();
 			if (right.LengthSquared() <= kEpsilon)
 				right = Vector3::UnitX();
@@ -306,7 +306,7 @@ namespace BlackLight::Math
 			return result;
 		}
 
-		/// Builds a centered orthographic projection mapping +Z onto the zero-to-one depth range.
+		/// Builds a centered right-handed orthographic projection mapping depth to zero-to-one.
 		static constexpr Matrix4 CreateOrthographic(
 			float width,
 			float height,
@@ -317,7 +317,7 @@ namespace BlackLight::Math
 				-width * 0.5f, width * 0.5f, -height * 0.5f, height * 0.5f, near_plane, far_plane);
 		}
 
-		/// Builds an off-center orthographic projection mapping +Z onto the zero-to-one depth range.
+		/// Builds a right-handed orthographic projection mapping the view depth range to zero-to-one.
 		static constexpr Matrix4 CreateOrthographicOffCenter(
 			float left,
 			float right,
@@ -331,10 +331,10 @@ namespace BlackLight::Math
 			Matrix4 result{};
 			result.m[0][0] = 2.0f / (right - left);
 			result.m[1][1] = 2.0f / (top - bottom);
-			result.m[2][2] = 1.0f / (far_plane - near_plane);
+			result.m[2][2] = 1.0f / (near_plane - far_plane);
 			result.m[3][0] = -(right + left) / (right - left);
 			result.m[3][1] = -(top + bottom) / (top - bottom);
-			result.m[3][2] = -near_plane / (far_plane - near_plane);
+			result.m[3][2] = near_plane / (near_plane - far_plane);
 			result.m[3][3] = 1.0f;
 			return result;
 		}

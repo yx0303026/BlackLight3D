@@ -55,7 +55,7 @@ namespace BlackLight::Math
 				   minimum.y < other.maximum.y && maximum.y > other.minimum.y;
 		}
 
-		/// Returns a copy grown by an amount on every side.
+		/// Returns a copy grown by a non-negative amount on every side.
 		constexpr Rect Expanded(float amount) const noexcept
 		{
 			const Vector2 padding{amount, amount};
@@ -104,7 +104,7 @@ namespace BlackLight::Math
 				   minimum.z < other.maximum.z && maximum.z > other.minimum.z;
 		}
 
-		/// Returns a copy grown by an amount on every side.
+		/// Returns a copy grown by a non-negative amount on every side.
 		constexpr AABB Expanded(float amount) const noexcept
 		{
 			const Vector3 padding{amount, amount, amount};
@@ -152,6 +152,8 @@ namespace BlackLight::Math
 		static Plane FromPointNormal(const Vector3 &point, const Vector3 &normal) noexcept
 		{
 			const Vector3 unit_normal = normal.Normalized();
+			if (unit_normal.LengthSquared() <= kEpsilon)
+				return Plane{};
 			return {unit_normal, -unit_normal.Dot(point)};
 		}
 
@@ -159,6 +161,8 @@ namespace BlackLight::Math
 		static Plane FromPoints(const Vector3 &first, const Vector3 &second, const Vector3 &third) noexcept
 		{
 			const Vector3 unit_normal = (second - first).Cross(third - first).Normalized();
+			if (unit_normal.LengthSquared() <= kEpsilon)
+				return Plane{};
 			return {unit_normal, -unit_normal.Dot(first)};
 		}
 

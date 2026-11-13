@@ -187,6 +187,22 @@ namespace
 		CHECK(transform2d.Inverted().TransformPoint(transform2d.TransformPoint({1.0f, 2.0f}))
 				  .ApproximatelyEquals({1.0f, 2.0f}, 1.0e-5f));
 		CHECK(Matrix3{}.Inverted().ApproximatelyEquals(Matrix3::Identity(), 0.0f));
+
+		// Deterministic pseudo-random transforms exercise every cofactor of the general inverse.
+		for (int index = 1; index < 8; ++index)
+		{
+			const float seed = static_cast<float>(index) * 0.37f;
+			const Matrix4 transform =
+				Matrix4::CreateScale({1.0f + seed, 2.0f + seed * 0.5f, 3.0f + seed * 0.25f}) *
+				Matrix4::CreateRotationYawPitchRoll(seed, -seed * 1.7f, seed * 0.9f) *
+				Matrix4::CreateTranslation({seed, 4.0f + seed, -seed * 7.0f});
+			const Matrix4 inverse = transform.Inverted();
+			CHECK((transform * inverse).ApproximatelyEquals(Matrix4::Identity(), 1.0e-3f));
+			CHECK((inverse * transform).ApproximatelyEquals(Matrix4::Identity(), 1.0e-3f));
+			CHECK_NEAR((transform.Determinant() * inverse.Determinant()), 1.0f, 1.0e-4f);
+			CHECK(inverse.TransformPoint(transform.TransformPoint({1.0f, 1.1f, -0.5f}))
+					  .ApproximatelyEquals({1.0f, 1.1f, -0.5f}, 1.0e-3f));
+		}
 	}
 
 	/// Verifies perspective, orthographic, and view matrix construction.
@@ -228,11 +244,11 @@ namespace
 
 		const Matrix4 orthographic =
 			Matrix4::CreateOrthographicOffCenter(-4.0f, 4.0f, -2.0f, 2.0f, 1.0f, 11.0f);
-		const Vector4 top_right = orthographic.Transform({4.0f, 2.0f, 11.0f, 1.0f});
+		const Vector4 top_right = orthographic.Transform({4.0f, 2.0f, -11.0f, 1.0f});
 		CHECK_NEAR(top_right.x / top_right.w, 1.0f, 1.0e-6f);
 		CHECK_NEAR(top_right.y / top_right.w, 1.0f, 1.0e-6f);
 		CHECK_NEAR(top_right.z / top_right.w, 1.0f, 1.0e-6f);
-		const Vector4 bottom_left = orthographic.Transform({-4.0f, -2.0f, 1.0f, 1.0f});
+		const Vector4 bottom_left = orthographic.Transform({-4.0f, -2.0f, -1.0f, 1.0f});
 		CHECK_NEAR(bottom_left.x / bottom_left.w, -1.0f, 1.0e-6f);
 		CHECK_NEAR(bottom_left.y / bottom_left.w, -1.0f, 1.0e-6f);
 		CHECK_NEAR(bottom_left.z / bottom_left.w, 0.0f, 1.0e-6f);
@@ -242,7 +258,7 @@ namespace
 		const Matrix4 centered = Matrix4::CreateOrthographic(10.0f, 6.0f, 0.0f, 1.0f);
 		CHECK(centered.Transform({0.0f, 0.0f, 0.0f, 1.0f})
 				  .ApproximatelyEquals({0.0f, 0.0f, 0.0f, 1.0f}, 1.0e-6f));
-		CHECK_NEAR((centered.Transform({5.0f, 3.0f, 1.0f, 1.0f}).x), 1.0f, 1.0e-6f);
+		CHECK_NEAR((centered.Transform({5.0f, 3.0f, -1.0f, 1.0f}).x), 1.0f, 1.0e-6f);
 
 		const Matrix4 view = Matrix4::CreateLookAt({0.0f, 2.0f, 6.0f}, {0.0f, 2.0f, 0.0f},
 												   {0.0f, 1.0f, 0.0f});

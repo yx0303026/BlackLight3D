@@ -62,7 +62,7 @@ BL_LOG_ERROR("Content") << "Missing asset: " << path;
 - **旋转**：`Quaternion` 支持轴角、`FromYawPitchRoll`（先 Z 后 X 再 Y）、与旋转矩阵互转、`Rotate`、`Slerp` 和逆旋转；`operator*` 的左操作数先旋转，与 `Matrix4::operator*` 的顺序一致。
 - **几何**：`Rect`、`AABB`、`Sphere`、`Plane`、`Ray`、`Frustum`，提供包含、重叠、射线求交、平面归一化与投影、视锥提取和球/盒的保守剔除。
 - **相机**：`Matrix4::CreateLookAt` 生成视图矩阵，`CreatePerspectiveFieldOfView` / `CreatePerspective` / `CreateOrthographic` / `CreateOrthographicOffCenter` 生成投影矩阵，`Frustum::FromViewProjection(view * projection)` 提取六个裁剪平面。
-- **深度约定**：透视投影使用右手视图（-Z 为前方），正交投影使用 +Z，二者均把可见深度映射到 `[0, 1]`，与 D3D11 一致；OpenGL 后端上传 uniform 时按 `GL_TRUE` 转置。
+- **深度约定**：透视与正交投影均为右手投影（-Z 为前方），可见深度映射到 `[0, 1]`，与 D3D11 一致；OpenGL 后端上传 uniform 时按 `GL_TRUE` 转置，若启用深度测试需在着色器或设备层把裁剪空间 `z` 重映射到 `[-1, 1]`。
 
 ```cpp
 using namespace BlackLight::Math;
