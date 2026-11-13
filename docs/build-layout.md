@@ -21,13 +21,21 @@ cmake --build --preset x64-debug
 
 The `BLACKLIGHT_ARCH` cache variable controls the architecture segment and is restricted to `x64` or `x86`. The output directory is configured globally for archive, library, runtime, and per-configuration outputs, so the BlackLight targets and fetched dependency targets use the same layout.
 
+The default build also creates a configuration-specific SDK archive in its build directory:
+
+- `blacklight_engine_<arch>_debug.zip` for Debug.
+- `blacklight_engine_<arch>_release.zip` for Release.
+
+For example, an x64 Release build writes `build/x64/release/blacklight_engine_x64_release.zip`.
+The archive contains the engine libraries, UI dependency libraries, public headers, and CMake helpers.
+
 The engine targets are:
 
 - `blacklight_engine_<arch>.dll`: shared engine runtime.
 - `blacklight_engine_<arch>.lib`: MSVC import library for the DLL.
 - `blacklight_engine_<arch>_static.lib`: static engine variant.
 
-Run CPack from the configured build directory to create a ZIP containing these libraries and the public headers:
+The archive is included in the normal build. To regenerate only the SDK archive:
 
 ```powershell
 cmake --build --preset x64-debug --target blacklight_engine_package

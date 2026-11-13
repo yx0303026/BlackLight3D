@@ -237,7 +237,7 @@ find_path(BLACKLIGHT_RMLUI_INCLUDE_DIRECTORY RmlUi/Core.h
 )
 set(BLACKLIGHT_UI_PACKAGE_COMMANDS
 	COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:RmlUi::Core>"
-		"${BLACKLIGHT_PACKAGE_STAGE}/$<TARGET_FILE_NAME:RmlUi::Core>"
+		"${BLACKLIGHT_PACKAGE_STAGE}/lib/$<TARGET_FILE_NAME:RmlUi::Core>"
 	COMMAND "${CMAKE_COMMAND}" -E copy_directory
 		"${BLACKLIGHT_RMLUI_INCLUDE_DIRECTORY}/RmlUi"
 		"${BLACKLIGHT_PACKAGE_STAGE}/include/RmlUi"
@@ -248,7 +248,7 @@ set(BLACKLIGHT_UI_PACKAGE_COMMANDS
 if(TARGET Freetype::Freetype)
 	list(APPEND BLACKLIGHT_UI_PACKAGE_COMMANDS
 		COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:Freetype::Freetype>"
-			"${BLACKLIGHT_PACKAGE_STAGE}/$<TARGET_FILE_NAME:Freetype::Freetype>"
+			"${BLACKLIGHT_PACKAGE_STAGE}/lib/$<TARGET_FILE_NAME:Freetype::Freetype>"
 	)
 endif()
 if(EXISTS "${rmlui_SOURCE_DIR}/LICENSE.txt")
@@ -271,6 +271,8 @@ add_custom_command(
 	OUTPUT "${BLACKLIGHT_PACKAGE_ARCHIVE}"
 	COMMAND "${CMAKE_COMMAND}" -E rm -rf "${BLACKLIGHT_PACKAGE_STAGE}"
 	COMMAND "${CMAKE_COMMAND}" -E make_directory "${BLACKLIGHT_PACKAGE_STAGE}/include"
+		"${BLACKLIGHT_PACKAGE_STAGE}/bin"
+		"${BLACKLIGHT_PACKAGE_STAGE}/lib"
 	COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:blacklight_engine>"
 		"${BLACKLIGHT_PACKAGE_STAGE}/$<TARGET_FILE_NAME:blacklight_engine>"
 	COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_LINKER_FILE:blacklight_engine>"
@@ -290,4 +292,4 @@ add_custom_command(
 	COMMENT "Packaging BlackLight Engine SDK"
 	VERBATIM
 )
-add_custom_target(blacklight_engine_package DEPENDS "${BLACKLIGHT_PACKAGE_ARCHIVE}")
+add_custom_target(blacklight_engine_package ALL DEPENDS "${BLACKLIGHT_PACKAGE_ARCHIVE}")

@@ -11,10 +11,11 @@ $env:PATH = "D:\VisualStudio2026\Common7\IDE\CommonExtensions\Microsoft\CMake\Ni
 cmake --preset x64-debug
 cmake --build --preset x64-debug
 ctest --preset x64-debug
-cmake --build --preset x64-debug --target blacklight_engine_package
 ```
 
 The four presets are `x64-debug`, `x64-release`, `x86-debug`, and `x86-release`. Their build trees and target artifacts are kept under `build/{x64|x86}/{debug|release}`.
+
+The normal build creates `blacklight_engine_<arch>_<configuration>.zip` in the matching build directory, for example `build/x64/release/blacklight_engine_x64_release.zip`. To regenerate only the archive, build the `blacklight_engine_package` target.
 
 The package contains `blacklight_engine_<arch>.dll`, its import library,
 `blacklight_engine_<arch>_static.lib`, the UI dependency static libraries, public
