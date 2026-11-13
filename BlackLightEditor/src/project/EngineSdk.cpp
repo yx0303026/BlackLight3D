@@ -474,6 +474,10 @@ namespace BlackLight::Editor
 			!error &&
 			std::filesystem::is_regular_file(root / "blacklight_engine_x64_static.lib",
 				error) &&
+			!error &&
+			std::filesystem::is_regular_file(root / "lib" / "rmlui.lib", error) &&
+			!error &&
+			std::filesystem::is_regular_file(root / "lib" / "freetype.lib", error) &&
 			!error;
 	}
 

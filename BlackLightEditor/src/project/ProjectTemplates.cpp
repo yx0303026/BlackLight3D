@@ -9,7 +9,7 @@ namespace BlackLight::Editor
 	namespace
 	{
 
-		constexpr const char *TemplateVersion = "1.2.0";
+		constexpr const char *TemplateVersion = "1.2.1";
 		constexpr const char *EngineVersion = "0.1.0";
 
 		/// Describes an embedded file while preserving user-owned content by default.
@@ -134,8 +134,8 @@ target_compile_definitions(${PROJECT_TARGET} PRIVATE
 
 target_link_libraries(${PROJECT_TARGET} PRIVATE
 	"$${BLACKLIGHT_SDK_ROOT}/blacklight_engine_x64_static.lib"
-	"$${BLACKLIGHT_SDK_ROOT}/rmlui.lib"
-	"$${BLACKLIGHT_SDK_ROOT}/freetype.lib"
+	"$${BLACKLIGHT_SDK_ROOT}/lib/rmlui.lib"
+	"$${BLACKLIGHT_SDK_ROOT}/lib/freetype.lib"
 	opengl32
 	d3d11
 	dxgi
@@ -597,8 +597,8 @@ target_compile_definitions(${PROJECT_TARGET} PRIVATE
 
 target_link_libraries(${PROJECT_TARGET} PRIVATE
 	"$${BLACKLIGHT_SDK_ROOT}/blacklight_engine_x64_static.lib"
-	"$${BLACKLIGHT_SDK_ROOT}/rmlui.lib"
-	"$${BLACKLIGHT_SDK_ROOT}/freetype.lib"
+	"$${BLACKLIGHT_SDK_ROOT}/lib/rmlui.lib"
+	"$${BLACKLIGHT_SDK_ROOT}/lib/freetype.lib"
 	opengl32
 	d3d11
 	dxgi

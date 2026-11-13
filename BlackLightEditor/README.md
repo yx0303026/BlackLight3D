@@ -148,7 +148,7 @@ to the newest cached SDK when GitHub cannot be reached.
 | `BlackLightGame` | Executable | `Engine::Game` loop with variable and fixed updates, `assets/` content root |
 | `BlockLightUIInject` | DLL | Exported plugin API, `.def` export table, and `DllMain` shell |
 
-Template version `1.2.0` creates `ui/Main.bui` with a single centered `Hello Light`
+Template version `1.2.1` creates `ui/Main.bui` with a single centered `Hello Light`
 button. WindowsApp and BlackLightGame enable UI, load the Windows Arial font, and
 embed this document into the executable through the SDK's `blacklight_embed_bui`
 helper. Editing the document and rebuilding updates the interface without a runtime

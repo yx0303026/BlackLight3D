@@ -96,8 +96,8 @@ namespace
 	{
 		WriteFile(root / "include" / "BlackLightApi.h", "#pragma once\n");
 		WriteFile(root / "blacklight_engine_x64_static.lib", "");
-		WriteFile(root / "rmlui.lib", "");
-		WriteFile(root / "freetype.lib", "");
+		WriteFile(root / "lib" / "rmlui.lib", "");
+		WriteFile(root / "lib" / "freetype.lib", "");
 	}
 
 	/// Builds metadata that passes every validation rule for the supplied directories.
@@ -595,6 +595,7 @@ namespace
 		CHECK(ProjectValidator::HasErrors(missing_project));
 	}
 
+	/// Verifies generated project files and their references to the engine SDK.
 	void TestProjectGeneration()
 	{
 		TempDirectory temp;
@@ -651,6 +652,14 @@ namespace
 			CHECK(cmake.find("project(\"" + options.name + "\"") != std::string::npos);
 			CHECK(cmake.find("BLACKLIGHT_SDK_ROOT") != std::string::npos);
 			CHECK(cmake.find("blacklight_engine_x64_static.lib") != std::string::npos);
+			CHECK(cmake.find("${BLACKLIGHT_SDK_ROOT}/lib/rmlui.lib") !=
+				std::string::npos);
+			CHECK(cmake.find("${BLACKLIGHT_SDK_ROOT}/lib/freetype.lib") !=
+				std::string::npos);
+			CHECK(cmake.find("${BLACKLIGHT_SDK_ROOT}/rmlui.lib") ==
+				std::string::npos);
+			CHECK(cmake.find("${BLACKLIGHT_SDK_ROOT}/freetype.lib") ==
+				std::string::npos);
 			CHECK(cmake.find("add_subdirectory") == std::string::npos);
 			CHECK(cmake.find("${PROJECT_") == std::string::npos);
 
@@ -805,17 +814,22 @@ namespace
 		CHECK(!restored.Add({}));
 	}
 
+	/// Verifies that the SDK cache accepts only the complete published package layout.
 	void TestEngineSdkPackageLayout()
 	{
 		TempDirectory temp;
 		CHECK(!EngineSdk::IsPackage({}));
 		CHECK(!EngineSdk::IsPackage(temp.GetPath()));
 
-		// A partial download must not be treated as a usable SDK.
+		// A package missing its engine library must not be treated as usable.
 		WriteFile(temp.GetPath() / "include" / "BlackLightApi.h", "#pragma once\n");
 		CHECK(!EngineSdk::IsPackage(temp.GetPath()));
 
-		CreateEngineStub(temp.GetPath());
+		WriteFile(temp.GetPath() / "blacklight_engine_x64_static.lib", "");
+		CHECK(!EngineSdk::IsPackage(temp.GetPath()));
+		WriteFile(temp.GetPath() / "lib" / "rmlui.lib", "");
+		CHECK(!EngineSdk::IsPackage(temp.GetPath()));
+		WriteFile(temp.GetPath() / "lib" / "freetype.lib", "");
 		CHECK(EngineSdk::IsPackage(temp.GetPath()));
 	}
 
